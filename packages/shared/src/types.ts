@@ -32,3 +32,35 @@ export interface PaymentIntentResponse {
   amountCents: number;
   currency: string;
 }
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: RoleName;
+  locationId: string | null;
+}
+
+export interface LocationSummary {
+  id: string;
+  slug: string;
+  name: string;
+  address: string;
+  timezone: string;
+  chairCount: number;
+  bayCount: number;
+}
+
+export interface RevenueSplitLine {
+  ledgerTag: LedgerTagName;
+  amountCents: number;
+  splitCount: number;
+}
+
+export interface RevenueSplitReport {
+  from: string | null;
+  to: string | null;
+  totalCents: number;
+  lines: RevenueSplitLine[];
+}

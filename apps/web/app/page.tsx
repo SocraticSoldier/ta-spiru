@@ -1,5 +1,6 @@
+import type { JSX } from 'react';
 import { Hero } from '@/components/hero';
 
-const HomePage = (): React.JSX.Element => <Hero />;
+const HomePage = (): JSX.Element => <Hero />;
 
 export default HomePage;

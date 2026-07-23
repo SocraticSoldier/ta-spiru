@@ -1,9 +1,10 @@
 'use client';
 
+import type { JSX } from 'react';
 import { motion } from 'framer-motion';
 import { BRANCHES } from '@ta-spiru/shared';
 
-export const Hero = (): React.JSX.Element => (
+export const Hero = (): JSX.Element => (
   <main className="mx-auto flex min-h-screen max-w-4xl flex-col justify-center gap-10 px-6 py-16">
     <motion.header
       initial={{ opacity: 0, y: 24 }}

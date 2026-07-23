@@ -55,4 +55,26 @@ export class AuthService {
       throw new InternalServerErrorException('Login failed');
     }
   }
+
+  async me(userId: string): Promise<LoginResponse['user']> {
+    try {
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      if (!user || !user.isActive) {
+        throw new UnauthorizedException('Account not found or deactivated');
+      }
+      return {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        locationId: user.locationId,
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to load account');
+    }
+  }
 }
