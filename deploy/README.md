@@ -15,7 +15,33 @@ app. One origin means no CORS and cookies "just work".
               postgres:5432   redis:6379
 ```
 
-## First deploy
+## Quick start on a Hostinger VPS (demo)
+
+Requires a **Hostinger VPS / KVM** plan (Ubuntu) — shared/web hosting cannot run
+Docker. On the VPS:
+
+```bash
+# 1. Install Docker (Ubuntu)
+curl -fsSL https://get.docker.com | sh
+# 2. Open the web ports
+ufw allow 80/tcp && ufw allow 443/tcp && ufw --force enable
+# 3. Get the code and the demo env
+git clone <repo> && cd ta-spiru
+cp deploy/demo.env.example .env
+# 4. Fill the two secrets in .env:
+sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -base64 48)|" .env
+sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$(openssl rand -hex 32)|" .env
+# 5. Deploy (add --demo-data to load a populated showcase)
+./deploy/deploy.sh --demo-data
+```
+
+Point the DNS **A record** for `app.taspiru.com` at the VPS IP *before* step 5 so
+Caddy can obtain the TLS certificate. In demo mode Trust Payments stays on
+placeholders — the whole app works, but online bookings stay "pending" instead of
+auto-confirming (no real card settlement). Swap in MyST values and re-run
+`docker compose up -d --build` to go fully live.
+
+## First deploy (full / production)
 
 1. Point a DNS **A record** for `app.taspiru.com` at the server's public IP.
    Open ports **80** and **443**.
