@@ -5,12 +5,14 @@ import { BookingsModule } from './bookings/bookings.module';
 import { validateEnv } from './config/env.validation';
 import { InventoryModule } from './inventory/inventory.module';
 import { LocationsModule } from './locations/locations.module';
+import { LoyaltyModule } from './loyalty/loyalty.module';
 import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { QueueModule } from './queue/queue.module';
 import { RedisModule } from './redis/redis.module';
 import { ReportsModule } from './reports/reports.module';
+import { ServicesModule } from './services/services.module';
 import { TimeclockModule } from './timeclock/timeclock.module';
 
 @Module({
@@ -31,6 +33,8 @@ import { TimeclockModule } from './timeclock/timeclock.module';
     TimeclockModule,
     OrdersModule,
     QueueModule,
+    LoyaltyModule,
+    ServicesModule,
   ],
 })
 export class AppModule {}

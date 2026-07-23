@@ -37,3 +37,16 @@ export class CreatePosOrderDto {
   @Type(() => OrderItemDto)
   items!: OrderItemDto[];
 }
+
+export class CreateEcomOrderDto {
+  /** Fulfilment branch; defaults to the flagship hub when omitted. */
+  @IsOptional()
+  @IsString()
+  locationId?: string;
+
+  @IsArray()
+  @ArrayNotEmpty()
+  @ValidateNested({ each: true })
+  @Type(() => OrderItemDto)
+  items!: OrderItemDto[];
+}

@@ -17,7 +17,8 @@ import {
   StockMovementKind,
   TransactionStatus,
 } from '@ta-spiru/database';
-import { DEFAULT_CURRENCY } from '@ta-spiru/shared';
+import { DEFAULT_CURRENCY, TransactionRow } from '@ta-spiru/shared';
+import { LoyaltyService } from '../loyalty/loyalty.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TrustPaymentsWebhookDto } from './dto/trust-payments-webhook.dto';
 import {
@@ -43,6 +44,7 @@ export class TrustPaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly loyaltyService: LoyaltyService,
     config: ConfigService,
   ) {
     this.siteReference = config.getOrThrow<string>('TRUST_PAYMENTS_SITE_REFERENCE');
@@ -219,6 +221,14 @@ export class TrustPaymentsService {
           paidOrders += 1;
         }
 
+        if (transaction.customerId) {
+          await this.loyaltyService.awardForSettlement(tx, {
+            transactionId: transaction.id,
+            customerId: transaction.customerId,
+            amountCents: transaction.amountCents,
+          });
+        }
+
         return [confirmed.count, paidOrders] as const;
       });
 
@@ -234,6 +244,43 @@ export class TrustPaymentsService {
         throw error;
       }
       throw new InternalServerErrorException('Failed to process Trust Payments notification');
+    }
+  }
+
+  /** Recent ledger transactions for the admin portal browser. */
+  async listTransactions(limit: number): Promise<TransactionRow[]> {
+    try {
+      const transactions = await this.prisma.transaction.findMany({
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          customer: { select: { firstName: true, lastName: true } },
+          splits: { select: { ledgerTag: true, amountCents: true } },
+        },
+      });
+      return transactions.map((transaction) => ({
+        id: transaction.id,
+        paymentReference: transaction.paymentReference,
+        transactionReference: transaction.transactionReference,
+        status: transaction.status,
+        channel: transaction.channel,
+        amountCents: transaction.amountCents,
+        currency: transaction.currency,
+        customerName: transaction.customer
+          ? `${transaction.customer.firstName} ${transaction.customer.lastName}`
+          : null,
+        createdAt: transaction.createdAt.toISOString(),
+        settledAt: transaction.settledAt?.toISOString() ?? null,
+        splits: transaction.splits.map((split) => ({
+          ledgerTag: split.ledgerTag,
+          amountCents: split.amountCents,
+        })),
+      }));
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to list transactions');
     }
   }
 

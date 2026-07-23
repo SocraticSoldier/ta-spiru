@@ -86,6 +86,18 @@ enum LedgerTag {
   RETAIL_CAR_CARE
 }
 
+enum LoyaltyTier {
+  BRONZE
+  SILVER
+  GOLD
+}
+
+enum LoyaltyEntryKind {
+  EARN
+  REDEEM
+  ADJUST
+}
+
 enum ProductCategory {
   HAIR_CARE
   STYLING_WAX
@@ -166,6 +178,7 @@ model User {
   stockMovements       StockMovement[]
   orders               Order[]
   transactions         Transaction[]
+  loyaltyAccount       LoyaltyAccount?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -397,6 +410,38 @@ model OrderItem {
   quantity       Int
   unitPriceCents Int
   ledgerTag      LedgerTag
+}
+
+// ─────────────────────────────── Loyalty ───────────────────────────────
+
+// Cross-business loyalty: points accrue on settled spend across services and retail.
+model LoyaltyAccount {
+  id              String      @id @default(cuid())
+  userId          String      @unique
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balancePoints   Int         @default(0)
+  lifetimePoints  Int         @default(0)
+  tier            LoyaltyTier @default(BRONZE)
+  walletPassToken String      @unique @default(cuid()) // encoded in the Apple/Google Wallet pass QR
+
+  entries LoyaltyLedgerEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model LoyaltyLedgerEntry {
+  id          String           @id @default(cuid())
+  accountId   String
+  account     LoyaltyAccount   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  kind        LoyaltyEntryKind
+  deltaPoints Int // negative = redemption
+  reference   String? // transactionId / manual note reference
+  note        String?
+
+  createdAt DateTime @default(now())
+
+  @@index([accountId, createdAt])
 }
 
 // ─────────────────────────────── Payments ───────────────────────────────

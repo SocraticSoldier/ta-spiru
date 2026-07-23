@@ -164,3 +164,77 @@ export interface AppointmentRow {
   resourceName: string | null;
   comboGroupId: string | null;
 }
+
+export interface ServiceSummary {
+  id: string;
+  slug: string;
+  name: string;
+  kind: ServiceKindName;
+  durationMin: number;
+  priceCents: number;
+  isComboEligible: boolean;
+}
+
+export type LoyaltyTierName = 'BRONZE' | 'SILVER' | 'GOLD';
+
+export interface LoyaltyLedgerLine {
+  id: string;
+  kind: 'EARN' | 'REDEEM' | 'ADJUST';
+  deltaPoints: number;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface LoyaltySummary {
+  balancePoints: number;
+  lifetimePoints: number;
+  tier: LoyaltyTierName;
+  recentEntries: LoyaltyLedgerLine[];
+}
+
+/** Payload consumed by the wallet-pass generator and the QR renderer in the apps. */
+export interface LoyaltyPass {
+  walletPassToken: string;
+  qrPayload: string;
+  tier: LoyaltyTierName;
+  balancePoints: number;
+  displayName: string;
+}
+
+export interface LoyaltyScanResult {
+  accountId: string;
+  customerName: string;
+  tier: LoyaltyTierName;
+  balancePoints: number;
+  lifetimePoints: number;
+}
+
+export interface TransactionRow {
+  id: string;
+  paymentReference: string;
+  transactionReference: string | null;
+  status: string;
+  channel: string;
+  amountCents: number;
+  currency: string;
+  customerName: string | null;
+  createdAt: string;
+  settledAt: string | null;
+  splits: { ledgerTag: LedgerTagName; amountCents: number }[];
+}
+
+export interface OrderRow {
+  id: string;
+  channel: string;
+  status: string;
+  totalCents: number;
+  locationName: string;
+  createdAt: string;
+  items: { productName: string; quantity: number; unitPriceCents: number }[];
+}
+
+export interface EcomCheckoutResponse {
+  orderId: string;
+  totalCents: number;
+  paymentIntent: PaymentIntentResponse;
+}
