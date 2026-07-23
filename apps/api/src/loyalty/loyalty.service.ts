@@ -5,28 +5,13 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { LoyaltyAccount, LoyaltyEntryKind, LoyaltyTier, Prisma } from '@ta-spiru/database';
+import { LoyaltyAccount, LoyaltyEntryKind, Prisma } from '@ta-spiru/database';
 import { LoyaltyPass, LoyaltyScanResult, LoyaltySummary } from '@ta-spiru/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedeemPointsDto } from './dto/loyalty.dtos';
+import { pointsForAmount, tierForLifetime } from './loyalty.math';
 
 const QR_PREFIX = 'taspiru:loyalty:v1:';
-const SILVER_LIFETIME_POINTS = 500;
-const GOLD_LIFETIME_POINTS = 1500;
-
-/** 1 point per whole euro of settled spend. */
-const pointsForAmount = (amountCents: number): number => Math.floor(amountCents / 100);
-
-const tierForLifetime = (lifetimePoints: number): LoyaltyTier => {
-  if (lifetimePoints >= GOLD_LIFETIME_POINTS) {
-    return LoyaltyTier.GOLD;
-  }
-  if (lifetimePoints >= SILVER_LIFETIME_POINTS) {
-    return LoyaltyTier.SILVER;
-  }
-  return LoyaltyTier.BRONZE;
-};
-
 @Injectable()
 export class LoyaltyService {
   constructor(private readonly prisma: PrismaService) {}

@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: taspiru
+          POSTGRES_PASSWORD: taspiru
+          POSTGRES_DB: taspiru_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U taspiru -d taspiru_ci"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 15
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 15
+
+    env:
+      DATABASE_URL: postgresql://taspiru:taspiru@localhost:5432/taspiru_ci?schema=public
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-jwt-secret-not-for-production-0123456789abcdef
+      TRUST_PAYMENTS_SITE_REFERENCE: test_ci
+      TRUST_PAYMENTS_JWT_USERNAME: ci@taspiru.com
+      TRUST_PAYMENTS_JWT_SECRET: ci-tp-jwt-secret
+      TRUST_PAYMENTS_WEBHOOK_PASSWORD: ci-webhook-password
+      NEXT_PUBLIC_API_URL: https://app.taspiru.com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable Corepack (pnpm)
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @ta-spiru/database db:generate
+
+      - name: Apply migrations
+        run: pnpm --filter @ta-spiru/database exec prisma migrate deploy
+
+      - name: Seed database
+        run: pnpm --filter @ta-spiru/database db:seed
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build all packages
+        run: pnpm build
+
+      - name: Unit tests
+        run: pnpm --filter @ta-spiru/api test
+
+      - name: E2E tests
+        run: pnpm --filter @ta-spiru/api test:e2e

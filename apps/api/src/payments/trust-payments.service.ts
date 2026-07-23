@@ -1,4 +1,3 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
 import {
   BadRequestException,
   ForbiddenException,
@@ -20,6 +19,7 @@ import {
 import { DEFAULT_CURRENCY, TransactionRow } from '@ta-spiru/shared';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { computeSiteSecurity, digestsMatch } from './site-security';
 import { TrustPaymentsWebhookDto } from './dto/trust-payments-webhook.dto';
 import {
   CreatePaymentIntentInput,
@@ -292,23 +292,8 @@ export class TrustPaymentsService {
     if (!payload.responsesitesecurity) {
       throw new ForbiddenException('Missing site security digest');
     }
-    const digestInput = [
-      payload.errorcode,
-      payload.orderreference,
-      payload.settlestatus ?? '',
-      payload.sitereference,
-      payload.transactionreference,
-      this.webhookPassword,
-    ].join('');
-    const expected = createHash('sha256').update(digestInput, 'utf8').digest('hex');
-    const provided = payload.responsesitesecurity.toLowerCase();
-
-    const expectedBuffer = Buffer.from(expected, 'utf8');
-    const providedBuffer = Buffer.from(provided, 'utf8');
-    if (
-      expectedBuffer.length !== providedBuffer.length ||
-      !timingSafeEqual(expectedBuffer, providedBuffer)
-    ) {
+    const expected = computeSiteSecurity(payload, this.webhookPassword);
+    if (!digestsMatch(expected, payload.responsesitesecurity)) {
       throw new ForbiddenException('Invalid site security digest');
     }
   }
