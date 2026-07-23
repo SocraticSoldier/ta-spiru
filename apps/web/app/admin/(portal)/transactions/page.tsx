@@ -82,7 +82,7 @@ const TransactionsPage = async (): Promise<JSX.Element> => {
                       )
                       .join(' · ') || '—'}
                   </td>
-                  <td className="px-4 py-2.5 text-right font-medium">
+                  <td className="font-display px-4 py-2.5 text-right text-base">
                     {formatEuro(transaction.amountCents)}
                   </td>
                   <td className="px-4 py-2.5">

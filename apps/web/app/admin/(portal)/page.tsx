@@ -44,7 +44,7 @@ const DashboardPage = async (): Promise<JSX.Element> => {
               }}
             >
               <p className="text-sm text-white/60">{LEDGER_TAG_LABELS[line.ledgerTag] ?? line.ledgerTag}</p>
-              <p className="mt-2 text-3xl font-semibold tabular-nums" style={{ color: accent?.text }}>
+              <p className="font-display mt-2 text-4xl" style={{ color: accent?.text }}>
                 {formatEuro(line.amountCents)}
               </p>
               <p className="mt-1 text-xs text-white/40">{line.splitCount} ledger entries</p>

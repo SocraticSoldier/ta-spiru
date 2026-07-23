@@ -52,7 +52,7 @@ export const ServiceStream = async ({ kind, eyebrow, title, copy }: ServiceStrea
           >
             <div className="flex items-baseline justify-between gap-4">
               <p className="text-lg font-medium">{service.name}</p>
-              <p className="text-lg font-semibold" style={{ color: accent.text }}>
+              <p className="font-display text-2xl" style={{ color: accent.text }}>
                 {formatEuro(service.priceCents)}
               </p>
             </div>

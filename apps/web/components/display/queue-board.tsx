@@ -85,7 +85,7 @@ const EntryCard = ({ entry }: { entry: QueueEntryView }): JSX.Element => {
       }`}
     >
       <div
-        className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-xl font-semibold ${
+        className={`font-display flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-2xl ${
           called ? 'bg-bronze text-graphite-deep' : 'bg-white/10 text-white/80'
         }`}
       >
@@ -106,7 +106,7 @@ const EntryCard = ({ entry }: { entry: QueueEntryView }): JSX.Element => {
         ) : inService ? (
           <p className="text-base uppercase tracking-widest text-white/40">In service</p>
         ) : entry.estimatedWaitMin !== null ? (
-          <p className="text-lg text-white/60">~{entry.estimatedWaitMin} min</p>
+          <p className="font-display text-2xl text-white/60">~{entry.estimatedWaitMin} min</p>
         ) : null}
       </div>
     </motion.li>
@@ -148,7 +148,7 @@ export const QueueBoard = ({ locationSlug }: QueueBoardProps): JSX.Element => {
           </h1>
         </div>
         <div className="text-right">
-          <p className="text-4xl font-semibold tabular-nums text-white/90">{clock}</p>
+          <p className="font-display text-5xl text-white/90">{clock}</p>
           <p className="mt-1 text-sm text-white/40">
             {error ? 'Reconnecting…' : 'Live queue'}
           </p>

@@ -19,6 +19,7 @@ const config: Config = {
         },
       },
       fontFamily: {
+        sans: ['"Helvetica Neue"', 'Helvetica', 'Arial', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         display: ['Brewheat', 'Georgia', 'serif'],
       },
     },

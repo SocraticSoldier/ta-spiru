@@ -53,7 +53,7 @@ const InventoryPage = async (): Promise<JSX.Element> => {
                     <td className="px-4 py-2.5">{row.productName}</td>
                     <td className="px-4 py-2.5 text-white/60">{row.sku}</td>
                     <td className="px-4 py-2.5 text-white/60">{row.brand ?? '—'}</td>
-                    <td className="px-4 py-2.5 text-right">{row.quantity}</td>
+                    <td className="font-display px-4 py-2.5 text-right text-base">{row.quantity}</td>
                     <td className="px-4 py-2.5 text-right text-white/60">{row.reorderThreshold}</td>
                     <td className="px-4 py-2.5">
                       {row.lowStock ? (

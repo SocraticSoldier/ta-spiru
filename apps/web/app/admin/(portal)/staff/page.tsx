@@ -60,7 +60,7 @@ const StaffPage = async (): Promise<JSX.Element> => {
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-2.5 text-right">
+                  <td className="font-display px-4 py-2.5 text-right text-base">
                     {entry.workedMinutes !== null ? `${Math.floor(entry.workedMinutes / 60)}h ${entry.workedMinutes % 60}m` : '—'}
                   </td>
                 </tr>

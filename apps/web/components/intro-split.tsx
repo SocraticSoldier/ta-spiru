@@ -39,9 +39,10 @@ const Intro = ({ onDone }: { onDone: () => void }): JSX.Element => {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 1.3, duration: 0.8, ease: 'easeOut' }}
-        className="mt-6 max-w-md text-center text-lg tracking-wide text-white/70"
+        className="mt-6 max-w-lg text-center text-2xl italic text-bronze-light sm:text-3xl"
+        style={{ fontFamily: "'Snell Roundhand', 'Brush Script MT', 'Segoe Script', cursive" }}
       >
-        It&rsquo;s not just a haircut, it&rsquo;s a lifestyle.
+        It&rsquo;s not just a haircut, it&rsquo;s a lifestyle!
       </motion.p>
       <motion.p
         initial={{ opacity: 0 }}

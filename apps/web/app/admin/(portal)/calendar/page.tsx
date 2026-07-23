@@ -136,7 +136,7 @@ const CalendarPage = async ({
           const hourBlocks = blocks.filter((block) => maltaHour(block.startsAt) === hour);
           return (
             <div key={hour} className="flex gap-4 border-t border-white/5 py-2.5">
-              <p className="w-12 shrink-0 pt-1 text-right text-xs tabular-nums text-white/35">
+              <p className="font-display w-12 shrink-0 pt-1 text-right text-sm text-white/35">
                 {String(hour).padStart(2, '0')}:00
               </p>
               <div className="flex min-h-[30px] flex-1 flex-wrap items-start gap-2">

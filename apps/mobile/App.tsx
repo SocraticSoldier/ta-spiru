@@ -78,7 +78,9 @@ const App = (): React.JSX.Element => {
               <View key={service.id} style={styles.card}>
                 <View style={styles.cardRow}>
                   <Text style={styles.cardTitle}>{service.name}</Text>
-                  <Text style={styles.price}>{formatEuro(service.priceCents)}</Text>
+                  <Text style={fontsLoaded ? [styles.price, styles.displayFont] : styles.price}>
+                    {formatEuro(service.priceCents)}
+                  </Text>
                 </View>
                 <Text style={styles.cardSubtitle}>
                   {service.durationMin} min · {service.kind === 'BARBER' ? 'Barbering' : 'Detailing'}

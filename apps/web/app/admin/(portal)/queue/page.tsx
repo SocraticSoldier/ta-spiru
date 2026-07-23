@@ -150,7 +150,7 @@ const QueuePage = async ({
                 style={{ background: accent.soft, boxShadow: `inset 3px 0 0 ${accent.solid}` }}
               >
                 <span
-                  className="flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold"
+                  className="font-display flex h-9 w-9 items-center justify-center rounded-full text-base"
                   style={{ backgroundColor: accent.solid, color: '#0e0e10' }}
                 >
                   {entry.status === 'CALLED' ? '→' : entry.status === 'IN_SERVICE' ? '●' : entry.position ?? '·'}
