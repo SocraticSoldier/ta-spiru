@@ -1,0 +1,90 @@
+name: taspiru
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-taspiru}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-taspiru}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-taspiru} -d ${POSTGRES_DB:-taspiru}']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://${POSTGRES_USER:-taspiru}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-taspiru}?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      TRUST_PAYMENTS_SITE_REFERENCE: ${TRUST_PAYMENTS_SITE_REFERENCE:?}
+      TRUST_PAYMENTS_JWT_USERNAME: ${TRUST_PAYMENTS_JWT_USERNAME:?}
+      TRUST_PAYMENTS_JWT_SECRET: ${TRUST_PAYMENTS_JWT_SECRET:?}
+      TRUST_PAYMENTS_WEBHOOK_PASSWORD: ${TRUST_PAYMENTS_WEBHOOK_PASSWORD:?}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - '3001'
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${PUBLIC_URL:-https://app.taspiru.com}
+    restart: unless-stopped
+    environment:
+      # Server-side calls stay on the internal network.
+      API_URL: http://api:3001
+    depends_on:
+      - api
+    expose:
+      - '3000'
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      DOMAIN: ${DOMAIN:-app.taspiru.com}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@taspiru.com}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on:
+      - web
+      - api
+
+volumes:
+  pgdata:
+  redisdata:
+  caddydata:
+  caddyconfig:

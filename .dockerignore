@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/.expo
+.git
+.env
+.env.*
+!.env.example
+apps/mobile
+*.log
+coverage
