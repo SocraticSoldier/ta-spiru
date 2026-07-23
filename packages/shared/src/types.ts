@@ -94,6 +94,16 @@ export interface PunchResult {
   entry: TimeEntryRow;
 }
 
+/** A branch's clockable staff for the in-store kiosk grid. */
+export interface KioskStaffMember {
+  id: string;
+  name: string;
+  role: RoleName;
+  hasPin: boolean;
+  clockedIn: boolean;
+  clockedInSince: string | null;
+}
+
 export interface PosCheckoutResponse {
   orderId: string;
   totalCents: number;

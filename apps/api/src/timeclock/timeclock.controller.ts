@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { Role } from '@ta-spiru/database';
-import { PunchResult, TimeEntryRow } from '@ta-spiru/shared';
+import { KioskStaffMember, PunchResult, TimeEntryRow } from '@ta-spiru/shared';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -19,6 +19,13 @@ export class TimeclockController {
   @Roles(Role.MANAGER, Role.RECEPTIONIST, Role.BARBER, Role.WASH_ATTENDANT)
   punch(@Body() dto: PunchDto): Promise<PunchResult> {
     return this.timeclockService.punch(dto);
+  }
+
+  /** Kiosk staff grid for a branch (device session scopes the location). */
+  @Get('staff')
+  @Roles(Role.MANAGER, Role.RECEPTIONIST)
+  roster(@Query('locationId') locationId: string): Promise<KioskStaffMember[]> {
+    return this.timeclockService.roster(locationId);
   }
 
   @Post('pin')

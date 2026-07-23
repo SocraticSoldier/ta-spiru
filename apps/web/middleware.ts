@@ -16,6 +16,11 @@ export const middleware = (request: NextRequest): NextResponse => {
     return NextResponse.next();
   }
 
+  // Kiosk runs on store hardware; the device logs in once as branch staff.
+  if (pathname.startsWith('/kiosk') && !hasSession) {
+    return NextResponse.redirect(new URL('/admin/login', request.url));
+  }
+
   if (pathname.startsWith('/account') && !hasSession) {
     const signIn = new URL('/signin', request.url);
     signIn.searchParams.set('next', pathname);
@@ -29,5 +34,5 @@ export const middleware = (request: NextRequest): NextResponse => {
 };
 
 export const config = {
-  matcher: ['/admin/:path*', '/admin', '/account/:path*', '/account', '/signin'],
+  matcher: ['/admin/:path*', '/admin', '/account/:path*', '/account', '/signin', '/kiosk/:path*', '/kiosk'],
 };

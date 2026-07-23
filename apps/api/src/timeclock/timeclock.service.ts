@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { compare, hash } from 'bcryptjs';
 import { Location, Prisma, Role, TimeEntry, User } from '@ta-spiru/database';
-import { PunchResult, TimeEntryRow } from '@ta-spiru/shared';
+import { KioskStaffMember, PunchResult, TimeEntryRow } from '@ta-spiru/shared';
 import { AuthenticatedUser } from '../auth/interfaces/auth.interfaces';
 import { PrismaService } from '../prisma/prisma.service';
 import { EntriesQueryDto, PunchDto, SetPinDto, UpdateTimeEntryDto } from './dto/timeclock.dtos';
@@ -65,6 +65,36 @@ export class TimeclockService {
       return { action: 'CLOCK_IN', entry: this.toRow(opened) };
     } catch (error) {
       throw this.wrap(error, 'Timeclock punch failed');
+    }
+  }
+
+  /** Clockable staff at a branch with live clocked-in status, for the kiosk grid. */
+  async roster(locationId: string): Promise<KioskStaffMember[]> {
+    try {
+      const staff = await this.prisma.user.findMany({
+        where: { locationId, isActive: true, role: { not: Role.CUSTOMER } },
+        select: { id: true, firstName: true, lastName: true, role: true, pinHash: true },
+        orderBy: [{ role: 'asc' }, { firstName: 'asc' }],
+      });
+      const openEntries = await this.prisma.timeEntry.findMany({
+        where: { locationId, clockOutAt: null, userId: { in: staff.map((member) => member.id) } },
+        select: { userId: true, clockInAt: true },
+      });
+      const openByUser = new Map(openEntries.map((entry) => [entry.userId, entry.clockInAt]));
+
+      return staff.map((member) => {
+        const since = openByUser.get(member.id) ?? null;
+        return {
+          id: member.id,
+          name: `${member.firstName} ${member.lastName}`,
+          role: member.role,
+          hasPin: member.pinHash !== null,
+          clockedIn: since !== null,
+          clockedInSince: since?.toISOString() ?? null,
+        };
+      });
+    } catch (error) {
+      throw this.wrap(error, 'Failed to load kiosk roster');
     }
   }
 

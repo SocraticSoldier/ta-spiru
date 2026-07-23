@@ -18,6 +18,7 @@ const LINKS: readonly NavLink[] = [
   { href: '/admin/inventory', label: 'Inventory', roles: ['ADMIN', 'MANAGER', 'RECEPTIONIST'] },
   { href: '/admin/transactions', label: 'Transactions', roles: ['ADMIN'] },
   { href: '/admin/staff', label: 'Staff', roles: ['ADMIN', 'MANAGER'] },
+  { href: '/kiosk', label: 'Clock-in kiosk', roles: ['ADMIN', 'MANAGER', 'RECEPTIONIST'] },
 ];
 
 export const Sidebar = ({ role }: { role: RoleName }): JSX.Element => {
