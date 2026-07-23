@@ -42,6 +42,14 @@ enum AppointmentStatus {
   NO_SHOW
 }
 
+enum QueueStatus {
+  WAITING
+  CALLED
+  IN_SERVICE
+  COMPLETED
+  LEFT
+}
+
 enum OrderChannel {
   ECOMMERCE
   POS
@@ -114,6 +122,7 @@ model Location {
   shifts            Shift[]
   timeEntries       TimeEntry[]
   appointments      Appointment[]
+  queueEntries      QueueEntry[]
   stockLevels       StockLevel[]
   stockMovements    StockMovement[]
   orders            Order[]
@@ -153,6 +162,7 @@ model User {
   timeEntries          TimeEntry[]
   barberAppointments   Appointment[]   @relation("AppointmentBarber")
   customerAppointments Appointment[]   @relation("AppointmentCustomer")
+  queueEntries         QueueEntry[]
   stockMovements       StockMovement[]
   orders               Order[]
   transactions         Transaction[]
@@ -224,6 +234,7 @@ model Service {
 
   locations    LocationService[]
   appointments Appointment[]
+  queueEntries QueueEntry[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -331,6 +342,28 @@ model Appointment {
   @@index([barberId, startsAt])
   @@index([resourceId, startsAt])
   @@index([comboGroupId])
+}
+
+// Live walk-in queue; ordering is joinedAt within WAITING status.
+model QueueEntry {
+  id          String      @id @default(cuid())
+  locationId  String
+  location    Location    @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  customerId  String? // null for manually-created walk-ins
+  customer    User?       @relation(fields: [customerId], references: [id])
+  displayName String
+  serviceId   String
+  service     Service     @relation(fields: [serviceId], references: [id])
+  serviceKind ServiceKind
+  status      QueueStatus @default(WAITING)
+  vehicleReg  String?
+
+  joinedAt    DateTime  @default(now())
+  calledAt    DateTime?
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  @@index([locationId, status, joinedAt])
 }
 
 // ─────────────────────────────── Retail ───────────────────────────────

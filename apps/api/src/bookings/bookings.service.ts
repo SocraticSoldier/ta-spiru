@@ -16,9 +16,17 @@ import {
   Service,
   ServiceKind,
 } from '@ta-spiru/database';
-import { COMBO_WASH_BUFFER_MIN, ComboSlot, SLOT_STEP_MIN } from '@ta-spiru/shared';
+import {
+  AppointmentRow,
+  AvailabilitySlot,
+  COMBO_WASH_BUFFER_MIN,
+  ComboSlot,
+  SLOT_STEP_MIN,
+} from '@ta-spiru/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { CreateBookingDto } from './dto/create-booking.dto';
 import { CreateComboBookingDto } from './dto/create-combo-booking.dto';
+import { DayScheduleQueryDto, FindAvailabilityDto } from './dto/find-availability.dto';
 import { FindComboAvailabilityDto } from './dto/find-combo-availability.dto';
 import { addMinutes, overlaps, zonedTimeToUtc } from './utils/time.util';
 
@@ -297,6 +305,300 @@ export class BookingsService {
       }
       throw new InternalServerErrorException('Failed to create combo booking');
     }
+  }
+
+  /** Independent (non-combo) availability for a single barber or wash service. */
+  async findAvailability(query: FindAvailabilityDto): Promise<AvailabilitySlot[]> {
+    try {
+      const window = await this.getOpenWindow(query.locationId, query.date);
+      if (!window) {
+        return [];
+      }
+      const { open, close } = window;
+
+      const service = await this.prisma.service.findFirst({
+        where: { id: query.serviceId, isActive: true },
+      });
+      if (!service) {
+        throw new BadRequestException(`Service ${query.serviceId} not found or inactive`);
+      }
+
+      const [barbers, resources, appointments] = await Promise.all([
+        service.kind === ServiceKind.BARBER
+          ? this.prisma.user.findMany({
+              where: { role: Role.BARBER, locationId: query.locationId, isActive: true },
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                shifts: {
+                  where: { startsAt: { lt: close }, endsAt: { gt: open } },
+                  select: { startsAt: true, endsAt: true },
+                },
+              },
+            })
+          : Promise.resolve([]),
+        this.prisma.resource.findMany({
+          where: { locationId: query.locationId, isActive: true },
+          select: { id: true, kind: true, name: true },
+        }),
+        this.prisma.appointment.findMany({
+          where: {
+            locationId: query.locationId,
+            status: { in: [...ACTIVE_STATUSES] },
+            startsAt: { lt: close },
+            lockedUntil: { gt: open },
+          },
+          select: { barberId: true, resourceId: true, startsAt: true, endsAt: true, lockedUntil: true },
+        }),
+      ]);
+
+      const chairs = resources.filter((resource) => resource.kind === ResourceKind.BARBER_CHAIR);
+      const bays = resources.filter((resource) => resource.kind === ResourceKind.WASH_BAY);
+      const slots: AvailabilitySlot[] = [];
+
+      for (
+        let cursor = open;
+        addMinutes(cursor, service.durationMin) <= close;
+        cursor = addMinutes(cursor, SLOT_STEP_MIN)
+      ) {
+        const slotEnd = addMinutes(cursor, service.durationMin);
+
+        if (service.kind === ServiceKind.BARBER) {
+          const busyBarberIds = new Set(
+            appointments
+              .filter(
+                (appointment) =>
+                  appointment.barberId !== null &&
+                  overlaps(appointment.startsAt, appointment.endsAt, cursor, slotEnd),
+              )
+              .map((appointment) => appointment.barberId as string),
+          );
+          if (chairs.length > 0 && busyBarberIds.size >= chairs.length) {
+            continue;
+          }
+          const freeBarber = barbers.find(
+            (barber) =>
+              !busyBarberIds.has(barber.id) &&
+              barber.shifts.some((shift) => shift.startsAt <= cursor && shift.endsAt >= slotEnd),
+          );
+          if (!freeBarber) {
+            continue;
+          }
+          slots.push({
+            startsAt: cursor.toISOString(),
+            endsAt: slotEnd.toISOString(),
+            barberId: freeBarber.id,
+            barberName: `${freeBarber.firstName} ${freeBarber.lastName}`,
+            resourceId: null,
+            resourceName: null,
+          });
+        } else {
+          const freeBay = bays.find(
+            (bay) =>
+              !appointments.some(
+                (appointment) =>
+                  appointment.resourceId === bay.id &&
+                  overlaps(appointment.startsAt, appointment.lockedUntil, cursor, slotEnd),
+              ),
+          );
+          if (!freeBay) {
+            continue;
+          }
+          slots.push({
+            startsAt: cursor.toISOString(),
+            endsAt: slotEnd.toISOString(),
+            barberId: null,
+            barberName: null,
+            resourceId: freeBay.id,
+            resourceName: freeBay.name,
+          });
+        }
+      }
+
+      return slots;
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to compute availability');
+    }
+  }
+
+  /** Books a single (non-combo) barber or wash appointment with a serializable conflict re-check. */
+  async createBooking(dto: CreateBookingDto, customerId: string): Promise<AppointmentRow> {
+    try {
+      const service = await this.prisma.service.findFirst({
+        where: { id: dto.serviceId, isActive: true },
+      });
+      if (!service) {
+        throw new BadRequestException(`Service ${dto.serviceId} not found or inactive`);
+      }
+      if (service.kind === ServiceKind.BARBER && !dto.barberId) {
+        throw new BadRequestException('barberId is required for barber services');
+      }
+      if (service.kind === ServiceKind.WASH && !dto.washBayId) {
+        throw new BadRequestException('washBayId is required for wash services');
+      }
+
+      const startsAt = new Date(dto.startsAt);
+      if (Number.isNaN(startsAt.getTime()) || startsAt <= new Date()) {
+        throw new BadRequestException('startsAt must be a future ISO-8601 timestamp');
+      }
+      const endsAt = addMinutes(startsAt, service.durationMin);
+
+      const appointment = await this.prisma.$transaction(
+        async (tx) => {
+          if (service.kind === ServiceKind.BARBER) {
+            const conflict = await tx.appointment.findFirst({
+              where: {
+                barberId: dto.barberId,
+                status: { in: [...ACTIVE_STATUSES] },
+                startsAt: { lt: endsAt },
+                endsAt: { gt: startsAt },
+              },
+              select: { id: true },
+            });
+            if (conflict) {
+              throw new ConflictException('Selected barber is no longer available for this slot');
+            }
+          } else {
+            const conflict = await tx.appointment.findFirst({
+              where: {
+                resourceId: dto.washBayId,
+                status: { in: [...ACTIVE_STATUSES] },
+                startsAt: { lt: endsAt },
+                lockedUntil: { gt: startsAt },
+              },
+              select: { id: true },
+            });
+            if (conflict) {
+              throw new ConflictException('Selected wash bay is no longer available for this slot');
+            }
+          }
+
+          return tx.appointment.create({
+            data: {
+              locationId: dto.locationId,
+              customerId,
+              serviceId: service.id,
+              barberId: service.kind === ServiceKind.BARBER ? dto.barberId : null,
+              resourceId: service.kind === ServiceKind.WASH ? dto.washBayId : null,
+              startsAt,
+              endsAt,
+              lockedUntil: endsAt,
+              vehicleReg: dto.vehicleReg ?? null,
+              notes: dto.notes ?? null,
+            },
+            include: {
+              customer: { select: { firstName: true, lastName: true } },
+              service: { select: { name: true, kind: true } },
+              barber: { select: { firstName: true, lastName: true } },
+              resource: { select: { name: true } },
+            },
+          });
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+
+      return {
+        id: appointment.id,
+        startsAt: appointment.startsAt.toISOString(),
+        endsAt: appointment.endsAt.toISOString(),
+        status: appointment.status,
+        customerName: `${appointment.customer.firstName} ${appointment.customer.lastName}`,
+        serviceName: appointment.service.name,
+        serviceKind: appointment.service.kind,
+        barberName: appointment.barber
+          ? `${appointment.barber.firstName} ${appointment.barber.lastName}`
+          : null,
+        resourceName: appointment.resource?.name ?? null,
+        comboGroupId: appointment.comboGroupId,
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to create booking');
+    }
+  }
+
+  /** Master calendar feed: every appointment in a branch's local day. */
+  async daySchedule(query: DayScheduleQueryDto): Promise<AppointmentRow[]> {
+    try {
+      const window = await this.getOpenWindow(query.locationId, query.date, true);
+      if (!window) {
+        return [];
+      }
+      const appointments = await this.prisma.appointment.findMany({
+        where: {
+          locationId: query.locationId,
+          startsAt: { lt: window.close },
+          endsAt: { gt: window.open },
+        },
+        include: {
+          customer: { select: { firstName: true, lastName: true } },
+          service: { select: { name: true, kind: true } },
+          barber: { select: { firstName: true, lastName: true } },
+          resource: { select: { name: true } },
+        },
+        orderBy: { startsAt: 'asc' },
+      });
+
+      return appointments.map((appointment) => ({
+        id: appointment.id,
+        startsAt: appointment.startsAt.toISOString(),
+        endsAt: appointment.endsAt.toISOString(),
+        status: appointment.status,
+        customerName: `${appointment.customer.firstName} ${appointment.customer.lastName}`,
+        serviceName: appointment.service.name,
+        serviceKind: appointment.service.kind,
+        barberName: appointment.barber
+          ? `${appointment.barber.firstName} ${appointment.barber.lastName}`
+          : null,
+        resourceName: appointment.resource?.name ?? null,
+        comboGroupId: appointment.comboGroupId,
+      }));
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to load day schedule');
+    }
+  }
+
+  /**
+   * Resolves a branch's opening window for a local date, in UTC. Returns null
+   * when the branch is closed; `fullDay` widens to the whole local day so the
+   * calendar also shows out-of-hours records.
+   */
+  private async getOpenWindow(
+    locationId: string,
+    date: string,
+    fullDay = false,
+  ): Promise<{ open: Date; close: Date } | null> {
+    const location = await this.prisma.location.findUnique({
+      where: { id: locationId },
+      include: { openingHours: true },
+    });
+    if (!location || !location.isActive) {
+      throw new NotFoundException(`Location ${locationId} not found`);
+    }
+    if (fullDay) {
+      return {
+        open: zonedTimeToUtc(date, '00:00', location.timezone),
+        close: addMinutes(zonedTimeToUtc(date, '23:59', location.timezone), 1),
+      };
+    }
+    const weekday = new Date(`${date}T12:00:00.000Z`).getUTCDay();
+    const hours = location.openingHours.find((entry) => entry.weekday === weekday);
+    if (!hours) {
+      return null;
+    }
+    return {
+      open: zonedTimeToUtc(date, hours.opensAt, location.timezone),
+      close: zonedTimeToUtc(date, hours.closesAt, location.timezone),
+    };
   }
 
   private pickService(services: readonly Service[], serviceId: string, kind: ServiceKind): Service {

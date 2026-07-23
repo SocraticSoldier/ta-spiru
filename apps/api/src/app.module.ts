@@ -8,6 +8,7 @@ import { LocationsModule } from './locations/locations.module';
 import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { QueueModule } from './queue/queue.module';
 import { RedisModule } from './redis/redis.module';
 import { ReportsModule } from './reports/reports.module';
 import { TimeclockModule } from './timeclock/timeclock.module';
@@ -29,6 +30,7 @@ import { TimeclockModule } from './timeclock/timeclock.module';
     InventoryModule,
     TimeclockModule,
     OrdersModule,
+    QueueModule,
   ],
 })
 export class AppModule {}
