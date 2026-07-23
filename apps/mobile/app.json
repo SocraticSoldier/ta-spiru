@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "Ta' Spiru",
+    "slug": "ta-spiru",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#111113",
+    "ios": {
+      "bundleIdentifier": "com.taspiru.app",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "com.taspiru.app"
+    }
+  }
+}

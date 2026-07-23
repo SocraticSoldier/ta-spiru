@@ -1,0 +1,23 @@
+# deps
+node_modules/
+.pnpm-store/
+
+# builds
+dist/
+build/
+.next/
+out/
+.expo/
+.turbo/
+*.tsbuildinfo
+next-env.d.ts
+
+# env & secrets
+.env
+.env.*
+!.env.example
+
+# misc
+coverage/
+.DS_Store
+*.log

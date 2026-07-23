@@ -1,0 +1,392 @@
+// Ta' Spiru Digital Ecosystem — multi-location schema (Phase 1)
+// Money is stored in integer cents. Timestamps are UTC; opening hours are
+// local wall-clock strings interpreted in Location.timezone.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────── Enums ───────────────────────────────
+
+enum Role {
+  ADMIN // global
+  MANAGER // location-scoped
+  RECEPTIONIST // location-scoped (POS / calendar)
+  BARBER // personal
+  WASH_ATTENDANT // personal / bay
+  CUSTOMER
+}
+
+enum ServiceKind {
+  BARBER
+  WASH
+}
+
+enum ResourceKind {
+  BARBER_CHAIR
+  WASH_BAY
+}
+
+enum AppointmentStatus {
+  PENDING_PAYMENT
+  CONFIRMED
+  CHECKED_IN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum OrderChannel {
+  ECOMMERCE
+  POS
+  BACK_BAR
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  FULFILLED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentChannel {
+  ONLINE
+  POS_TERMINAL
+}
+
+enum TransactionStatus {
+  PENDING
+  AUTHORISED
+  SETTLED
+  DECLINED
+  REFUNDED
+  CANCELLED
+}
+
+// Revenue-splitting tags mirrored in the Trust Payments settlement ledger.
+enum LedgerTag {
+  BARBER_SERVICES
+  CAR_DETAILING
+  RETAIL_BARBER
+  RETAIL_CAR_CARE
+}
+
+enum ProductCategory {
+  HAIR_CARE
+  STYLING_WAX
+  SHAVE_BEARD
+  DETAILING_CHEMICAL
+  DETAILING_HARDWARE
+}
+
+enum StockMovementKind {
+  INTAKE
+  SALE_ECOMMERCE
+  SALE_POS
+  BACK_BAR_USE
+  TRANSFER_IN
+  TRANSFER_OUT
+  ADJUSTMENT
+}
+
+// ─────────────────────────────── Network ───────────────────────────────
+
+model Location {
+  id       String  @id @default(cuid())
+  slug     String  @unique
+  name     String
+  address  String
+  phone    String?
+  timezone String  @default("Europe/Malta")
+  isActive Boolean @default(true)
+
+  openingHours      OpeningHours[]
+  users             User[]
+  services          LocationService[]
+  resources         Resource[]
+  shifts            Shift[]
+  appointments      Appointment[]
+  stockLevels       StockLevel[]
+  stockMovements    StockMovement[]
+  orders            Order[]
+  transactionSplits TransactionSplit[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OpeningHours {
+  id         String   @id @default(cuid())
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  weekday    Int // 0 = Sunday … 6 = Saturday; absent row = closed
+  opensAt    String // "HH:mm" local time
+  closesAt   String // "HH:mm" local time
+
+  @@unique([locationId, weekday])
+}
+
+// ─────────────────────────────── People ───────────────────────────────
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  phone        String?
+  passwordHash String? // null for customers created via guest checkout
+  firstName    String
+  lastName     String
+  role         Role      @default(CUSTOMER)
+  locationId   String? // null = global (ADMIN) or unaffiliated (CUSTOMER)
+  location     Location? @relation(fields: [locationId], references: [id])
+  isActive     Boolean   @default(true)
+
+  shifts               Shift[]
+  barberAppointments   Appointment[]   @relation("AppointmentBarber")
+  customerAppointments Appointment[]   @relation("AppointmentCustomer")
+  stockMovements       StockMovement[]
+  orders               Order[]
+  transactions         Transaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([locationId, role])
+}
+
+// Rostered working window; barbers are only bookable inside a shift.
+model Shift {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  startsAt   DateTime
+  endsAt     DateTime
+
+  @@index([userId, startsAt])
+  @@index([locationId, startsAt])
+}
+
+// ─────────────────────────────── Capacity ───────────────────────────────
+
+// Physical bookable capacity: barber chairs and wash bays.
+model Resource {
+  id         String       @id @default(cuid())
+  locationId String
+  location   Location     @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  kind       ResourceKind
+  name       String
+  isActive   Boolean      @default(true)
+
+  appointments Appointment[]
+
+  @@unique([locationId, name])
+  @@index([locationId, kind])
+}
+
+// ─────────────────────────────── Catalog ───────────────────────────────
+
+model Service {
+  id              String      @id @default(cuid())
+  slug            String      @unique
+  name            String
+  description     String?
+  kind            ServiceKind
+  durationMin     Int
+  priceCents      Int
+  ledgerTag       LedgerTag
+  isComboEligible Boolean     @default(false)
+  isActive        Boolean     @default(true)
+
+  locations    LocationService[]
+  appointments Appointment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model LocationService {
+  locationId         String
+  location           Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  serviceId          String
+  service            Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  priceCentsOverride Int?
+  isActive           Boolean  @default(true)
+
+  @@id([locationId, serviceId])
+}
+
+// ─────────────────────────────── Inventory ───────────────────────────────
+
+model Product {
+  id         String          @id @default(cuid())
+  sku        String          @unique
+  barcode    String?         @unique // EAN/UPC for camera scanning (Phase 2)
+  name       String
+  brand      String?
+  category   ProductCategory
+  priceCents Int
+  costCents  Int?
+  ledgerTag  LedgerTag
+  isActive   Boolean         @default(true)
+
+  stockLevels    StockLevel[]
+  stockMovements StockMovement[]
+  orderItems     OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Current on-hand quantity per branch; the movement table is the ledger of record.
+model StockLevel {
+  id               String   @id @default(cuid())
+  productId        String
+  product          Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  locationId       String
+  location         Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  quantity         Int      @default(0)
+  reorderThreshold Int      @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, locationId])
+}
+
+// Append-only central inventory ledger across e-commerce, POS and back-bar use.
+model StockMovement {
+  id            String            @id @default(cuid())
+  productId     String
+  product       Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  locationId    String
+  location      Location          @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  kind          StockMovementKind
+  quantityDelta Int // negative = deduction
+  reference     String? // orderId / appointmentId / transfer batch id
+  performedById String?
+  performedBy   User?             @relation(fields: [performedById], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([productId, locationId, createdAt])
+}
+
+// ─────────────────────────────── Booking ───────────────────────────────
+
+model Appointment {
+  id         String            @id @default(cuid())
+  locationId String
+  location   Location          @relation(fields: [locationId], references: [id])
+  customerId String
+  customer   User              @relation("AppointmentCustomer", fields: [customerId], references: [id])
+  serviceId  String
+  service    Service           @relation(fields: [serviceId], references: [id])
+  barberId   String? // set on BARBER segments
+  barber     User?             @relation("AppointmentBarber", fields: [barberId], references: [id])
+  resourceId String? // chair or wash bay
+  resource   Resource?         @relation(fields: [resourceId], references: [id])
+  status     AppointmentStatus @default(PENDING_PAYMENT)
+
+  startsAt    DateTime
+  endsAt      DateTime // actual service window
+  lockedUntil DateTime // resource hold; wash segments extend past endsAt by the combo buffer
+
+  comboGroupId String? // shared by both segments of a "Combo Wash & Cut"
+
+  transactionId String?
+  transaction   Transaction? @relation(fields: [transactionId], references: [id])
+
+  vehicleReg String? // wash segments
+  notes      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([locationId, startsAt])
+  @@index([barberId, startsAt])
+  @@index([resourceId, startsAt])
+  @@index([comboGroupId])
+}
+
+// ─────────────────────────────── Retail ───────────────────────────────
+
+model Order {
+  id         String       @id @default(cuid())
+  locationId String // fulfilment branch (stock is deducted here)
+  location   Location     @relation(fields: [locationId], references: [id])
+  customerId String?
+  customer   User?        @relation(fields: [customerId], references: [id])
+  channel    OrderChannel
+  status     OrderStatus  @default(PENDING_PAYMENT)
+  totalCents Int
+
+  transactionId String?
+  transaction   Transaction? @relation(fields: [transactionId], references: [id])
+  items         OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([locationId, createdAt])
+}
+
+model OrderItem {
+  id             String    @id @default(cuid())
+  orderId        String
+  order          Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product   @relation(fields: [productId], references: [id])
+  quantity       Int
+  unitPriceCents Int
+  ledgerTag      LedgerTag
+}
+
+// ─────────────────────────────── Payments ───────────────────────────────
+
+// One Trust Payments authorisation; may settle several appointments and orders.
+model Transaction {
+  id                   String            @id @default(cuid())
+  paymentReference     String            @unique @default(cuid()) // sent to Trust Payments as `orderreference`
+  transactionReference String?           @unique // Trust Payments' own reference, set by the webhook
+  siteReference        String
+  channel              PaymentChannel
+  status               TransactionStatus @default(PENDING)
+  currency             String            @default("EUR")
+  amountCents          Int
+
+  customerId String?
+  customer   User?   @relation(fields: [customerId], references: [id])
+
+  rawWebhookPayload Json?
+
+  appointments Appointment[]
+  orders       Order[]
+  splits       TransactionSplit[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  settledAt DateTime?
+
+  @@index([status, createdAt])
+}
+
+// Revenue split ledger: the sum of a transaction's splits equals amountCents.
+model TransactionSplit {
+  id            String      @id @default(cuid())
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  ledgerTag     LedgerTag
+  amountCents   Int
+  locationId    String?
+  location      Location?   @relation(fields: [locationId], references: [id])
+
+  @@index([transactionId])
+  @@index([ledgerTag])
+}
