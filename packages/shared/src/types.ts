@@ -64,3 +64,38 @@ export interface RevenueSplitReport {
   totalCents: number;
   lines: RevenueSplitLine[];
 }
+
+export interface StockLevelRow {
+  productId: string;
+  sku: string;
+  productName: string;
+  brand: string | null;
+  locationId: string;
+  locationName: string;
+  quantity: number;
+  reorderThreshold: number;
+  lowStock: boolean;
+}
+
+export interface TimeEntryRow {
+  id: string;
+  userId: string;
+  staffName: string;
+  role: RoleName;
+  locationId: string;
+  locationName: string;
+  clockInAt: string;
+  clockOutAt: string | null;
+  workedMinutes: number | null;
+}
+
+export interface PunchResult {
+  action: 'CLOCK_IN' | 'CLOCK_OUT';
+  entry: TimeEntryRow;
+}
+
+export interface PosCheckoutResponse {
+  orderId: string;
+  totalCents: number;
+  paymentIntent: PaymentIntentResponse;
+}

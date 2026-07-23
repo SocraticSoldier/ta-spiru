@@ -112,6 +112,7 @@ model Location {
   services          LocationService[]
   resources         Resource[]
   shifts            Shift[]
+  timeEntries       TimeEntry[]
   appointments      Appointment[]
   stockLevels       StockLevel[]
   stockMovements    StockMovement[]
@@ -140,6 +141,7 @@ model User {
   email        String    @unique
   phone        String?
   passwordHash String? // null for customers created via guest checkout
+  pinHash      String? // staff timeclock PIN (bcrypt)
   firstName    String
   lastName     String
   role         Role      @default(CUSTOMER)
@@ -148,6 +150,7 @@ model User {
   isActive     Boolean   @default(true)
 
   shifts               Shift[]
+  timeEntries          TimeEntry[]
   barberAppointments   Appointment[]   @relation("AppointmentBarber")
   customerAppointments Appointment[]   @relation("AppointmentCustomer")
   stockMovements       StockMovement[]
@@ -158,6 +161,20 @@ model User {
   updatedAt DateTime @updatedAt
 
   @@index([locationId, role])
+}
+
+// Attendance punch pair recorded from the in-store kiosk (PIN clock-in).
+model TimeEntry {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  locationId String
+  location   Location  @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  clockInAt  DateTime  @default(now())
+  clockOutAt DateTime? // null = currently clocked in
+
+  @@index([userId, clockInAt])
+  @@index([locationId, clockInAt])
 }
 
 // Rostered working window; barbers are only bookable inside a shift.
@@ -270,6 +287,7 @@ model StockMovement {
   kind          StockMovementKind
   quantityDelta Int // negative = deduction
   reference     String? // orderId / appointmentId / transfer batch id
+  note          String? // free-text reason (adjustments, back-bar use)
   performedById String?
   performedBy   User?             @relation(fields: [performedById], references: [id])
 
