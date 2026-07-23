@@ -7,6 +7,7 @@ import {
 import { Location, OpeningHours, Prisma, Resource, ResourceKind, Role } from '@ta-spiru/database';
 import { LocationSummary, StaffOption } from '@ta-spiru/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { fullName } from '../common/name.util';
 import { UpdateLocationDto } from './dto/update-location.dto';
 
 export interface LocationDetail extends LocationSummary {
@@ -71,7 +72,7 @@ export class LocationsService {
       });
       return barbers.map((barber) => ({
         id: barber.id,
-        name: `${barber.firstName} ${barber.lastName}`,
+        name: fullName(barber.firstName, barber.lastName),
         role: barber.role,
         locationId: barber.locationId,
       }));

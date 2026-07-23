@@ -19,6 +19,7 @@ import {
 import { DEFAULT_CURRENCY, TransactionRow } from '@ta-spiru/shared';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { fullName } from '../common/name.util';
 import { computeSiteSecurity, digestsMatch } from './site-security';
 import { TrustPaymentsWebhookDto } from './dto/trust-payments-webhook.dto';
 import {
@@ -267,7 +268,7 @@ export class TrustPaymentsService {
         amountCents: transaction.amountCents,
         currency: transaction.currency,
         customerName: transaction.customer
-          ? `${transaction.customer.firstName} ${transaction.customer.lastName}`
+          ? fullName(transaction.customer.firstName, transaction.customer.lastName)
           : null,
         createdAt: transaction.createdAt.toISOString(),
         settledAt: transaction.settledAt?.toISOString() ?? null,

@@ -74,13 +74,31 @@ interface StaffSeed {
 }
 
 // Real org structure. Branch-less entries (branchSlug: null) are global.
-// TODO: replace the placeholder barber names below with the live roster from
-// taspiru.com/barbers/team (unreachable from this build environment).
 interface OrgSeed extends Omit<StaffSeed, 'branchSlug'> {
   branchSlug: string | null;
 }
 
-const STAFF: readonly OrgSeed[] = [
+// Barbershop roster (first-name basis), per taspiru.com/barbers/team.
+const BARBERS_BY_BRANCH: Record<string, readonly string[]> = {
+  naxxar: ['Fabian', 'Louis', 'Jose', 'Reuben', 'Alejandro'],
+  pama: ['Sam', 'Sebastian', 'Dylan', 'Stuart'],
+  'san-gwann': ['Juan', 'Cayden', 'Ramirez', 'Deric'],
+  fgura: ['Johnathan', 'Samuele', 'Diti', 'Santiago', 'Kieran', 'Jean'],
+  'san-giljan': ['Adam', 'Marwan'],
+};
+
+const BARBER_STAFF: readonly OrgSeed[] = Object.entries(BARBERS_BY_BRANCH).flatMap(
+  ([branchSlug, names]) =>
+    names.map((firstName) => ({
+      email: `${firstName.toLowerCase()}@taspiru.com`,
+      firstName,
+      lastName: '',
+      role: Role.BARBER,
+      branchSlug,
+    })),
+);
+
+const CORE_STAFF: readonly OrgSeed[] = [
   // Admin profiles
   { email: 'norbert@taspiru.com', firstName: 'Norbert', lastName: 'Ta Spiru', role: Role.ADMIN, branchSlug: null }, // Owner — barber & car wash
   { email: 'joane@taspiru.com', firstName: 'Joane', lastName: 'Admin', role: Role.ADMIN, branchSlug: null }, // Barber division admin
@@ -91,19 +109,13 @@ const STAFF: readonly OrgSeed[] = [
   { email: 'clarice@taspiru.com', firstName: 'Clarice', lastName: 'Reception', role: Role.RECEPTIONIST, branchSlug: 'fgura' },
   { email: 'romina@taspiru.com', firstName: 'Romina', lastName: 'Reception', role: Role.RECEPTIONIST, branchSlug: 'naxxar' },
 
-  // Barbers — PLACEHOLDERS pending the taspiru.com/barbers/team roster
-  { email: 'barber1@taspiru.com', firstName: 'Barber', lastName: 'One (Naxxar)', role: Role.BARBER, branchSlug: 'naxxar' },
-  { email: 'barber2@taspiru.com', firstName: 'Barber', lastName: 'Two (Naxxar)', role: Role.BARBER, branchSlug: 'naxxar' },
-  { email: 'barber3@taspiru.com', firstName: 'Barber', lastName: 'Three (Pama)', role: Role.BARBER, branchSlug: 'pama' },
-  { email: 'barber4@taspiru.com', firstName: 'Barber', lastName: 'Four (San Gwann)', role: Role.BARBER, branchSlug: 'san-gwann' },
-  { email: 'barber5@taspiru.com', firstName: 'Barber', lastName: 'Five (Fgura)', role: Role.BARBER, branchSlug: 'fgura' },
-  { email: 'barber6@taspiru.com', firstName: 'Barber', lastName: 'Six (San Giljan)', role: Role.BARBER, branchSlug: 'san-giljan' },
-
   // Car wash crew
   { email: 'martin@taspiru.com', firstName: 'Martin', lastName: 'Supervisor', role: Role.WASH_ATTENDANT, branchSlug: 'naxxar' }, // Supervisor
   { email: 'jerry@taspiru.com', firstName: 'Jerry', lastName: 'Attendant', role: Role.WASH_ATTENDANT, branchSlug: 'naxxar' },
   { email: 'kelvin@taspiru.com', firstName: 'Kelvin', lastName: 'Attendant', role: Role.WASH_ATTENDANT, branchSlug: 'pama' },
 ];
+
+const STAFF: readonly OrgSeed[] = [...CORE_STAFF, ...BARBER_STAFF];
 
 const SHIFT_DAYS_AHEAD = 14;
 const MALTA_TZ = 'Europe/Malta';

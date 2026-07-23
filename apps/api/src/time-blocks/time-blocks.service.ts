@@ -10,6 +10,7 @@ import { TimeBlockRow } from '@ta-spiru/shared';
 import { AuthenticatedUser } from '../auth/interfaces/auth.interfaces';
 import { addMinutes, zonedTimeToUtc } from '../bookings/utils/time.util';
 import { PrismaService } from '../prisma/prisma.service';
+import { fullName } from '../common/name.util';
 import { CreateTimeBlockDto, TimeBlocksQueryDto } from './dto/time-blocks.dtos';
 
 @Injectable()
@@ -103,7 +104,7 @@ export class TimeBlocksService {
       id: block.id,
       locationId: block.locationId,
       barberId: block.barberId,
-      barberName: block.barber ? `${block.barber.firstName} ${block.barber.lastName}` : null,
+      barberName: block.barber ? fullName(block.barber.firstName, block.barber.lastName) : null,
       startsAt: block.startsAt.toISOString(),
       endsAt: block.endsAt.toISOString(),
       reason: block.reason,

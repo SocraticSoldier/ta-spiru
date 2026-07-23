@@ -35,7 +35,7 @@ pnpm dev
 | Clarice | `clarice@taspiru.com` | RECEPTIONIST — Fgura |
 | Martin (supervisor) | `martin@taspiru.com` | WASH_ATTENDANT — Naxxar |
 | Jerry / Kelvin | `jerry@` / `kelvin@taspiru.com` | WASH_ATTENDANT — Naxxar / Pama |
-| Barbers | `barber1–6@taspiru.com` | **Placeholders** — swap names in `prisma/seed.ts` with the roster from taspiru.com/barbers/team |
+| Barbers (21) | `<firstname>@taspiru.com` | Real roster across the 5 branches (Naxxar 5, Pama 4, San Ġwann 4, Fgura 6, San Ġiljan 2) — see `BARBERS_BY_BRANCH` in `prisma/seed.ts` |
 
 Passwords: staff `Staff!2026` (kiosk PIN `1234`) · system fallback `admin@taspiru.com` / `ChangeMe!2026` · `customer@taspiru.com` / `Customer!2026`.
 

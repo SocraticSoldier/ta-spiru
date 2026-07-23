@@ -12,6 +12,7 @@ import { Location, Prisma, Role, TimeEntry, User } from '@ta-spiru/database';
 import { KioskStaffMember, PunchResult, TimeEntryRow } from '@ta-spiru/shared';
 import { AuthenticatedUser } from '../auth/interfaces/auth.interfaces';
 import { PrismaService } from '../prisma/prisma.service';
+import { fullName } from '../common/name.util';
 import { EntriesQueryDto, PunchDto, SetPinDto, UpdateTimeEntryDto } from './dto/timeclock.dtos';
 
 type EntryWithNames = TimeEntry & {
@@ -86,7 +87,7 @@ export class TimeclockService {
         const since = openByUser.get(member.id) ?? null;
         return {
           id: member.id,
-          name: `${member.firstName} ${member.lastName}`,
+          name: fullName(member.firstName, member.lastName),
           role: member.role,
           hasPin: member.pinHash !== null,
           clockedIn: since !== null,
@@ -175,7 +176,7 @@ export class TimeclockService {
     return {
       id: entry.id,
       userId: entry.userId,
-      staffName: `${entry.user.firstName} ${entry.user.lastName}`,
+      staffName: fullName(entry.user.firstName, entry.user.lastName),
       role: entry.user.role,
       locationId: entry.locationId,
       locationName: entry.location.name,

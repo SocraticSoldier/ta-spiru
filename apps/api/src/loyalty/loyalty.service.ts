@@ -8,6 +8,7 @@ import {
 import { LoyaltyAccount, LoyaltyEntryKind, Prisma } from '@ta-spiru/database';
 import { LoyaltyPass, LoyaltyScanResult, LoyaltySummary } from '@ta-spiru/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { fullName } from '../common/name.util';
 import { RedeemPointsDto } from './dto/loyalty.dtos';
 import { pointsForAmount, tierForLifetime } from './loyalty.math';
 
@@ -120,7 +121,7 @@ export class LoyaltyService {
         qrPayload: `${QR_PREFIX}${account.walletPassToken}`,
         tier: account.tier,
         balancePoints: account.balancePoints,
-        displayName: `${user.firstName} ${user.lastName}`,
+        displayName: fullName(user.firstName, user.lastName),
       };
     } catch (error) {
       throw this.wrap(error, 'Failed to build wallet pass');
@@ -140,7 +141,7 @@ export class LoyaltyService {
       }
       return {
         accountId: account.id,
-        customerName: `${account.user.firstName} ${account.user.lastName}`,
+        customerName: fullName(account.user.firstName, account.user.lastName),
         tier: account.tier,
         balancePoints: account.balancePoints,
         lifetimePoints: account.lifetimePoints,

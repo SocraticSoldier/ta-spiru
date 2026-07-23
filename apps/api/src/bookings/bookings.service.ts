@@ -25,6 +25,7 @@ import {
   SLOT_STEP_MIN,
 } from '@ta-spiru/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { fullName } from '../common/name.util';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { CreateComboBookingDto } from './dto/create-combo-booking.dto';
 import { DayScheduleQueryDto, FindAvailabilityDto } from './dto/find-availability.dto';
@@ -188,7 +189,7 @@ export class BookingsService {
           barberEndsAt: cutEnd.toISOString(),
           washBayLockedUntil: bayLockEnd.toISOString(),
           barberId: freeBarber.id,
-          barberName: `${freeBarber.firstName} ${freeBarber.lastName}`,
+          barberName: fullName(freeBarber.firstName, freeBarber.lastName),
           washBayId: freeBay.id,
           washBayName: freeBay.name,
         });
@@ -435,7 +436,7 @@ export class BookingsService {
             startsAt: cursor.toISOString(),
             endsAt: slotEnd.toISOString(),
             barberId: freeBarber.id,
-            barberName: `${freeBarber.firstName} ${freeBarber.lastName}`,
+            barberName: fullName(freeBarber.firstName, freeBarber.lastName),
             resourceId: null,
             resourceName: null,
           });
@@ -568,11 +569,11 @@ export class BookingsService {
         startsAt: appointment.startsAt.toISOString(),
         endsAt: appointment.endsAt.toISOString(),
         status: appointment.status,
-        customerName: `${appointment.customer.firstName} ${appointment.customer.lastName}`,
+        customerName: fullName(appointment.customer.firstName, appointment.customer.lastName),
         serviceName: appointment.service.name,
         serviceKind: appointment.service.kind,
         barberName: appointment.barber
-          ? `${appointment.barber.firstName} ${appointment.barber.lastName}`
+          ? fullName(appointment.barber.firstName, appointment.barber.lastName)
           : null,
         resourceName: appointment.resource?.name ?? null,
         comboGroupId: appointment.comboGroupId,
@@ -612,11 +613,11 @@ export class BookingsService {
         startsAt: appointment.startsAt.toISOString(),
         endsAt: appointment.endsAt.toISOString(),
         status: appointment.status,
-        customerName: `${appointment.customer.firstName} ${appointment.customer.lastName}`,
+        customerName: fullName(appointment.customer.firstName, appointment.customer.lastName),
         serviceName: appointment.service.name,
         serviceKind: appointment.service.kind,
         barberName: appointment.barber
-          ? `${appointment.barber.firstName} ${appointment.barber.lastName}`
+          ? fullName(appointment.barber.firstName, appointment.barber.lastName)
           : null,
         resourceName: appointment.resource?.name ?? null,
         comboGroupId: appointment.comboGroupId,
@@ -654,7 +655,7 @@ export class BookingsService {
         endsAt: appointment.endsAt.toISOString(),
         status: appointment.status,
         barberName: appointment.barber
-          ? `${appointment.barber.firstName} ${appointment.barber.lastName}`
+          ? fullName(appointment.barber.firstName, appointment.barber.lastName)
           : null,
         resourceName: appointment.resource?.name ?? null,
         vehicleReg: appointment.vehicleReg,
