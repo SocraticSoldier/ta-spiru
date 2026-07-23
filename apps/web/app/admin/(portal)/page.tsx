@@ -26,7 +26,12 @@ const DashboardPage = async (): Promise<JSX.Element> => {
 
   return (
     <section>
-      <h1 className="text-4xl">Dashboard</h1>
+      <div className="flex flex-wrap items-baseline gap-x-4">
+        <h1 className="text-4xl">Dashboard</h1>
+        <p className="font-script text-2xl text-bronze/80">
+          It&rsquo;s not just a haircut, it&rsquo;s a lifestyle!
+        </p>
+      </div>
 
       <h2 className="mt-8 font-sans text-sm font-semibold uppercase tracking-[0.2em] text-white/50">
         Settled revenue by ledger

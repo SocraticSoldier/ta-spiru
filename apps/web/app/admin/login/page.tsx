@@ -40,8 +40,11 @@ const LoginPage = (): JSX.Element => {
         transition={{ duration: 0.45, ease: 'easeOut' }}
         className="w-full max-w-sm rounded-2xl border border-white/10 bg-graphite p-8"
       >
-        <p className="text-xs uppercase tracking-[0.3em] text-bronze">Ta&apos; Spiru</p>
-        <h1 className="mt-2 text-2xl font-semibold">Master Admin Portal</h1>
+        <p className="font-display text-4xl text-bronze-light">Ta&apos; Spiru</p>
+        <p className="font-script mt-1 text-xl text-bronze">
+          It&apos;s not just a haircut, it&apos;s a lifestyle!
+        </p>
+        <h1 className="mt-6 text-3xl">Staff Portal</h1>
 
         <label className="mt-8 block text-sm text-white/70" htmlFor="email">
           Email

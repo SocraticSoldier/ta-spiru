@@ -113,9 +113,17 @@ const EntryCard = ({ entry }: { entry: QueueEntryView }): JSX.Element => {
   );
 };
 
-const Column = ({ title, entries }: { title: string; entries: QueueEntryView[] }): JSX.Element => (
+const Column = ({
+  title,
+  accentClass,
+  entries,
+}: {
+  title: string;
+  accentClass: string;
+  entries: QueueEntryView[];
+}): JSX.Element => (
   <section className="flex min-w-0 flex-1 flex-col">
-    <h2 className="mb-4 font-sans text-sm font-semibold uppercase tracking-[0.35em] text-white/40">{title}</h2>
+    <h2 className={`font-script mb-4 text-4xl ${accentClass}`}>{title}</h2>
     <ul className="flex flex-col gap-3">
       <AnimatePresence mode="popLayout">
         {entries.map((entry) => (
@@ -142,8 +150,11 @@ export const QueueBoard = ({ locationSlug }: QueueBoardProps): JSX.Element => {
     <main className="flex min-h-screen flex-col px-10 py-8">
       <header className="mb-8 flex items-end justify-between border-b border-white/10 pb-6">
         <div>
-          <p className="font-display text-2xl text-bronze-light">Ta&apos; Spiru</p>
-          <h1 className="mt-1 text-5xl">
+          <p className="font-display text-3xl text-bronze-light">Ta&apos; Spiru</p>
+          <p className="font-script text-xl text-bronze">
+            It&apos;s not just a haircut, it&apos;s a lifestyle!
+          </p>
+          <h1 className="mt-2 text-5xl">
             {snapshot?.locationName ?? locationSlug.replaceAll('-', ' ')}
           </h1>
         </div>
@@ -156,12 +167,15 @@ export const QueueBoard = ({ locationSlug }: QueueBoardProps): JSX.Element => {
       </header>
 
       <div className="flex flex-1 flex-col gap-10 lg:flex-row">
-        <Column title="Barbering" entries={barberEntries} />
-        <Column title="Car Detailing" entries={washEntries} />
+        <Column title="The Barber" accentClass="text-bronze-light" entries={barberEntries} />
+        <Column title="The Car Wash" accentClass="text-wash-light" entries={washEntries} />
       </div>
 
-      <footer className="mt-8 border-t border-white/10 pt-4 text-center text-sm text-white/30">
-        Join the queue in the Ta&apos; Spiru app · taspiru.com
+      <footer className="mt-8 flex items-center justify-center gap-4 border-t border-white/10 pt-4 text-sm text-white/30">
+        <span>Join the queue in the Ta&apos; Spiru app · taspiru.com</span>
+        <span aria-hidden className="font-script text-lg text-bronze/50">
+          It&apos;s not just a haircut, it&apos;s a lifestyle!
+        </span>
       </footer>
     </main>
   );

@@ -27,8 +27,11 @@ const AdminLayout = async ({ children }: { children: ReactNode }): Promise<JSX.E
   return (
     <div className="mx-auto flex min-h-screen max-w-7xl gap-8 px-6 py-8">
       <aside className="w-52 shrink-0">
-        <p className="font-display px-3.5 text-2xl text-bronze-light">Ta&rsquo; Spiru</p>
-        <p className="mb-6 mt-1 px-3.5 text-xs uppercase tracking-[0.25em] text-white/40">
+        <p className="font-display px-3.5 text-3xl text-bronze-light">Ta&rsquo; Spiru</p>
+        <p className="font-script px-3.5 text-base leading-tight text-bronze">
+          It&rsquo;s not just a haircut, it&rsquo;s a lifestyle!
+        </p>
+        <p className="mb-6 mt-3 px-3.5 text-xs uppercase tracking-[0.25em] text-white/40">
           {user.role === 'RECEPTIONIST' ? 'Reception' : 'Master Admin'}
         </p>
         <Sidebar role={user.role} />
@@ -48,6 +51,12 @@ const AdminLayout = async ({ children }: { children: ReactNode }): Promise<JSX.E
         </header>
         {children}
       </div>
+      <p
+        aria-hidden
+        className="font-script pointer-events-none fixed bottom-5 right-8 select-none text-3xl text-white/[0.06]"
+      >
+        It&rsquo;s not just a haircut, it&rsquo;s a lifestyle!
+      </p>
     </div>
   );
 };

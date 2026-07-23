@@ -11,6 +11,16 @@
   font-display: swap;
 }
 
+/* Brand script for the "lifestyle" tagline lockup (Great Vibes, OFL). */
+@font-face {
+  font-family: 'TaSpiru Script';
+  src: url('/fonts/BrandScript.woff2') format('woff2'),
+       url('/fonts/BrandScript.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   color-scheme: dark;
 }
@@ -34,6 +44,10 @@
 @layer utilities {
   .font-display {
     font-family: 'Brewheat', 'Georgia', serif;
+    font-weight: 400;
+  }
+  .font-script {
+    font-family: 'TaSpiru Script', 'Snell Roundhand', cursive;
     font-weight: 400;
   }
 }

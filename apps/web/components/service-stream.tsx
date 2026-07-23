@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { JSX } from 'react';
 import type { LocationSummary, ServiceKindName, ServiceSummary } from '@ta-spiru/shared';
+import { StreamMark, Tagline } from '@/components/brand';
 import { apiFetch } from '@/lib/api';
 import { KIND_COLORS, locationColor } from '@/lib/colors';
 import { formatEuro } from '@/lib/format';
@@ -37,11 +38,10 @@ export const ServiceStream = async ({ kind, eyebrow, title, copy }: ServiceStrea
       <Link href="/" className="text-sm text-white/40 transition hover:text-white/70">
         ← Ta&rsquo; Spiru
       </Link>
-      <p className="mt-10 text-xs font-semibold uppercase tracking-[0.4em]" style={{ color: accent.text }}>
-        {eyebrow}
-      </p>
-      <h1 className="mt-3 text-5xl sm:text-6xl">{title}</h1>
+      <StreamMark kind={kind} className="mt-10 block text-4xl" />
+      <h1 className="mt-2 text-5xl sm:text-6xl">{title}</h1>
       <p className="mt-4 max-w-xl text-lg text-white/60">{copy}</p>
+      <Tagline className="mt-3 block text-2xl text-bronze" />
 
       <div className="mt-12 grid gap-3 sm:grid-cols-2">
         {services.map((service) => (

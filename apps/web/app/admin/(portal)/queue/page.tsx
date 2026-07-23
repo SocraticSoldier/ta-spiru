@@ -165,7 +165,10 @@ const QueuePage = async ({
                     {entry.estimatedWaitMin !== null ? ` · ~${entry.estimatedWaitMin} min` : ''}
                   </p>
                 </div>
-                <span className="text-xs uppercase tracking-widest" style={{ color: accent.text }}>
+                <span className="font-script text-lg" style={{ color: accent.text }}>
+                  {entry.serviceKind === 'BARBER' ? 'The Barber' : 'The Car Wash'}
+                </span>
+                <span className="text-xs uppercase tracking-widest text-white/50">
                   {entry.status.replaceAll('_', ' ')}
                 </span>
                 <EntryActions entry={entry} />

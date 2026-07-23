@@ -122,11 +122,13 @@ const CalendarPage = async ({
           </Link>
         ))}
         <span className="mx-2 hidden h-4 w-px bg-white/10 sm:block" />
-        <span className="flex items-center gap-1.5 text-xs text-white/50">
-          <span aria-hidden className="h-2 w-4 rounded-sm" style={{ backgroundColor: KIND_COLORS.BARBER.solid }} /> Barber
+        <span className="flex items-center gap-2">
+          <span aria-hidden className="h-2 w-4 rounded-sm" style={{ backgroundColor: KIND_COLORS.BARBER.solid }} />
+          <span className="font-script text-lg text-bronze-light">The Barber</span>
         </span>
-        <span className="flex items-center gap-1.5 text-xs text-white/50">
-          <span aria-hidden className="h-2 w-4 rounded-sm" style={{ backgroundColor: KIND_COLORS.WASH.solid }} /> Car wash
+        <span className="flex items-center gap-2">
+          <span aria-hidden className="h-2 w-4 rounded-sm" style={{ backgroundColor: KIND_COLORS.WASH.solid }} />
+          <span className="font-script text-lg text-wash-light">The Car Wash</span>
         </span>
       </div>
 

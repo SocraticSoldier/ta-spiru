@@ -22,10 +22,10 @@ const Intro = ({ onDone }: { onDone: () => void }): JSX.Element => {
       onClick={onDone}
     >
       <motion.p
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, ease: 'easeOut' }}
-        className="font-display text-5xl text-bronze-light sm:text-7xl"
+        initial={{ opacity: 0, scale: 0.92, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.9, ease: 'easeOut' }}
+        className="font-display text-6xl text-bronze-light sm:text-8xl"
       >
         Ta&rsquo; Spiru
       </motion.p>
@@ -33,14 +33,13 @@ const Intro = ({ onDone }: { onDone: () => void }): JSX.Element => {
         initial={{ scaleX: 0 }}
         animate={{ scaleX: 1 }}
         transition={{ delay: 0.7, duration: 0.9, ease: 'easeInOut' }}
-        className="mt-6 h-px w-48 origin-center bg-gradient-to-r from-transparent via-bronze to-transparent"
+        className="mt-6 h-px w-56 origin-center bg-gradient-to-r from-transparent via-bronze to-transparent"
       />
       <motion.p
-        initial={{ opacity: 0, y: 12 }}
+        initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 1.3, duration: 0.8, ease: 'easeOut' }}
-        className="mt-6 max-w-lg text-center text-2xl italic text-bronze-light sm:text-3xl"
-        style={{ fontFamily: "'Snell Roundhand', 'Brush Script MT', 'Segoe Script', cursive" }}
+        transition={{ delay: 1.2, duration: 1.0, ease: 'easeOut' }}
+        className="font-script mt-7 max-w-xl text-center text-3xl text-bronze sm:text-4xl"
       >
         It&rsquo;s not just a haircut, it&rsquo;s a lifestyle!
       </motion.p>
@@ -98,8 +97,8 @@ const Panel = ({
       style={{ background: glow }}
     >
       <div className="relative z-10">
-        <p className={`text-xs font-semibold uppercase tracking-[0.4em] ${accentClass}`}>{eyebrow}</p>
-        <h2 className="mt-3 text-5xl text-white sm:text-6xl">{title}</h2>
+        <p className={`font-script text-3xl ${accentClass}`}>{eyebrow}</p>
+        <h2 className="mt-2 text-5xl text-white sm:text-6xl">{title}</h2>
         <p className="mt-4 max-w-sm text-white/60">{copy}</p>
         <span
           className={`mt-8 inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em] ${accentClass}`}
@@ -137,8 +136,8 @@ export const IntroSplit = (): JSX.Element => {
         <div className="flex min-h-screen flex-col lg:flex-row">
           <Panel
             href="/barber"
-            eyebrow="Barbering"
-            title="The Barber"
+            eyebrow="The Barber"
+            title="Barbering"
             copy="Fades, sculpted beards, hot-towel rituals and facial treatments across five branches in Malta."
             accentClass="text-bronze-light"
             glow="radial-gradient(120% 90% at 30% 100%, rgba(176,141,87,0.28), rgba(14,14,16,0.98) 65%)"
@@ -150,8 +149,8 @@ export const IntroSplit = (): JSX.Element => {
           <div className="relative z-10 hidden w-px bg-white/10 lg:block" />
           <Panel
             href="/wash"
-            eyebrow="Car Detailing"
-            title="The Car Wash"
+            eyebrow="The Car Wash"
+            title="Car Detailing"
             copy="Premium valeting, ceramic coating and the Combo Wash & Cut — your car detailed while you get sharp."
             accentClass="text-wash-light"
             glow="radial-gradient(120% 90% at 70% 100%, rgba(63,193,176,0.22), rgba(14,14,16,0.98) 65%)"
@@ -161,15 +160,18 @@ export const IntroSplit = (): JSX.Element => {
             delay={0.15}
           />
 
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center pt-10">
-            <motion.p
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center pt-8">
+            <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.4, duration: 0.6 }}
-              className="font-display text-3xl text-white/90"
+              className="flex flex-col items-center"
             >
-              Ta&rsquo; Spiru
-            </motion.p>
+              <p className="font-display text-3xl text-white/90">Ta&rsquo; Spiru</p>
+              <p className="font-script mt-0.5 text-lg text-bronze">
+                It&rsquo;s not just a haircut, it&rsquo;s a lifestyle!
+              </p>
+            </motion.div>
           </div>
         </div>
       ) : null}
