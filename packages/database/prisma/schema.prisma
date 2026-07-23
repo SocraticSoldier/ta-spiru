@@ -133,6 +133,7 @@ model Location {
   resources         Resource[]
   shifts            Shift[]
   timeEntries       TimeEntry[]
+  timeBlocks        TimeBlock[]
   appointments      Appointment[]
   queueEntries      QueueEntry[]
   stockLevels       StockLevel[]
@@ -179,6 +180,8 @@ model User {
   orders               Order[]
   transactions         Transaction[]
   loyaltyAccount       LoyaltyAccount?
+  timeBlocks           TimeBlock[]     @relation("TimeBlockBarber")
+  createdTimeBlocks    TimeBlock[]     @relation("TimeBlockCreator")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -198,6 +201,26 @@ model TimeEntry {
 
   @@index([userId, clockInAt])
   @@index([locationId, clockInAt])
+}
+
+// Admin-managed unavailability: a barber's break, or a whole-location
+// closure when barberId is null. Availability engines exclude these windows.
+model TimeBlock {
+  id          String   @id @default(cuid())
+  locationId  String
+  location    Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  barberId    String? // null = blocks the entire location (chairs and bays)
+  barber      User?    @relation("TimeBlockBarber", fields: [barberId], references: [id], onDelete: Cascade)
+  startsAt    DateTime
+  endsAt      DateTime
+  reason      String?
+  createdById String?
+  createdBy   User?    @relation("TimeBlockCreator", fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([locationId, startsAt])
+  @@index([barberId, startsAt])
 }
 
 // Rostered working window; barbers are only bookable inside a shift.

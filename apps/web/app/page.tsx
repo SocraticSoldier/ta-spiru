@@ -1,6 +1,6 @@
 import type { JSX } from 'react';
-import { Hero } from '@/components/hero';
+import { IntroSplit } from '@/components/intro-split';
 
-const HomePage = (): JSX.Element => <Hero />;
+const HomePage = (): JSX.Element => <IntroSplit />;
 
 export default HomePage;

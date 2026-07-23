@@ -4,8 +4,8 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { Location, OpeningHours, Prisma, Resource, ResourceKind } from '@ta-spiru/database';
-import { LocationSummary } from '@ta-spiru/shared';
+import { Location, OpeningHours, Prisma, Resource, ResourceKind, Role } from '@ta-spiru/database';
+import { LocationSummary, StaffOption } from '@ta-spiru/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateLocationDto } from './dto/update-location.dto';
 
@@ -59,6 +59,24 @@ export class LocationsService {
         throw error;
       }
       throw new InternalServerErrorException('Failed to load location');
+    }
+  }
+
+  async barbers(locationId: string): Promise<StaffOption[]> {
+    try {
+      const barbers = await this.prisma.user.findMany({
+        where: { locationId, role: Role.BARBER, isActive: true },
+        select: { id: true, firstName: true, lastName: true, role: true, locationId: true },
+        orderBy: { firstName: 'asc' },
+      });
+      return barbers.map((barber) => ({
+        id: barber.id,
+        name: `${barber.firstName} ${barber.lastName}`,
+        role: barber.role,
+        locationId: barber.locationId,
+      }));
+    } catch {
+      throw new InternalServerErrorException('Failed to list barbers');
     }
   }
 

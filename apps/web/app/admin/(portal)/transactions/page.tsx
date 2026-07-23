@@ -35,7 +35,7 @@ const TransactionsPage = async (): Promise<JSX.Element> => {
   return (
     <section>
       <div className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-semibold">Transactions</h1>
+        <h1 className="text-4xl">Transactions</h1>
         <p className="text-sm text-white/50">Trust Payments ledger · latest 50</p>
       </div>
 

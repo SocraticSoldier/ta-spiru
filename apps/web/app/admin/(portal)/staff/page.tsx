@@ -19,7 +19,7 @@ const StaffPage = async (): Promise<JSX.Element> => {
   return (
     <section>
       <div className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-semibold">Staff</h1>
+        <h1 className="text-4xl">Staff</h1>
         <p className="text-sm text-white/50">Timeclock · today</p>
       </div>
 

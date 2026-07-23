@@ -24,7 +24,28 @@ pnpm db:seed                    # branches, chairs/bays, services, products, sta
 pnpm dev
 ```
 
-Seed logins: `admin@taspiru.com` / `ChangeMe!2026` · staff `*@taspiru.com` / `Staff!2026` (PIN `1234`) · `customer@taspiru.com` / `Customer!2026`.
+## Accounts (seeded)
+
+| Who | Email | Role / scope |
+| --- | --- | --- |
+| Norbert (owner) | `norbert@taspiru.com` | ADMIN — barber & car wash, all branches |
+| Joane | `joane@taspiru.com` | ADMIN — barber division |
+| Chris | `chris@taspiru.com` | MANAGER — car wash, cross-branch |
+| Andrea / Romina | `andrea@` / `romina@taspiru.com` | RECEPTIONIST — Naxxar |
+| Clarice | `clarice@taspiru.com` | RECEPTIONIST — Fgura |
+| Martin (supervisor) | `martin@taspiru.com` | WASH_ATTENDANT — Naxxar |
+| Jerry / Kelvin | `jerry@` / `kelvin@taspiru.com` | WASH_ATTENDANT — Naxxar / Pama |
+| Barbers | `barber1–6@taspiru.com` | **Placeholders** — swap names in `prisma/seed.ts` with the roster from taspiru.com/barbers/team |
+
+Passwords: staff `Staff!2026` (kiosk PIN `1234`) · system fallback `admin@taspiru.com` / `ChangeMe!2026` · `customer@taspiru.com` / `Customer!2026`.
+
+## UI & scheduling controls
+
+- **Brewheat** is the brand display face (self-hosted in `apps/web/public/fonts`, loaded via `expo-font` on mobile).
+- Landing plays the *"It's not just a haircut, it's a lifestyle"* intro once per session, then splits into **The Barber** (bronze) / **The Car Wash** (teal) storefronts.
+- **Unified calendar** (`/admin/calendar`): all branches at once, chips colour-coded by stream (bronze barber / teal wash) with per-branch hue dots, combo badges and status dots.
+- **Block-out times** from the calendar (ADMIN/MANAGER): a barber's break or a whole-branch closure — blocked windows are excluded from client availability and rejected at booking time (`TimeBlock` model).
+- **Reception desk** (`/admin/queue`): live queue with Call / Start / Done actions and walk-in creation; the sidebar is role-aware (receptionists see their working set, Transactions stays owner-only).
 
 ## Blueprint phase map (all implemented)
 

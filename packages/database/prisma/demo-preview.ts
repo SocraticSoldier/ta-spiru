@@ -28,10 +28,10 @@ const addMin = (date: Date, minutes: number): Date => new Date(date.getTime() + 
 const main = async (): Promise<void> => {
   const naxxar = await prisma.location.findUniqueOrThrow({ where: { slug: 'naxxar' } });
   const [luca, matteo, owen, elena, customer] = await Promise.all([
-    prisma.user.findUniqueOrThrow({ where: { email: 'barber.naxxar1@taspiru.com' } }),
-    prisma.user.findUniqueOrThrow({ where: { email: 'barber.naxxar2@taspiru.com' } }),
-    prisma.user.findUniqueOrThrow({ where: { email: 'wash.naxxar@taspiru.com' } }),
-    prisma.user.findUniqueOrThrow({ where: { email: 'reception.naxxar@taspiru.com' } }),
+    prisma.user.findUniqueOrThrow({ where: { email: 'barber1@taspiru.com' } }),
+    prisma.user.findUniqueOrThrow({ where: { email: 'barber2@taspiru.com' } }),
+    prisma.user.findUniqueOrThrow({ where: { email: 'jerry@taspiru.com' } }),
+    prisma.user.findUniqueOrThrow({ where: { email: 'andrea@taspiru.com' } }),
     prisma.user.findUniqueOrThrow({ where: { email: 'customer@taspiru.com' } }),
   ]);
   const [skinFade, haircutBeard, exteriorWash, premiumValet] = await Promise.all([

@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Patch, UseGuards } from '@nestjs/common';
 import { Role } from '@ta-spiru/database';
-import { LocationSummary } from '@ta-spiru/shared';
+import { LocationSummary, StaffOption } from '@ta-spiru/shared';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -19,6 +19,11 @@ export class LocationsController {
   @Get(':locationId')
   findOne(@Param('locationId') locationId: string): Promise<LocationDetail> {
     return this.locationsService.findOne(locationId);
+  }
+
+  @Get(':locationId/barbers')
+  barbers(@Param('locationId') locationId: string): Promise<StaffOption[]> {
+    return this.locationsService.barbers(locationId);
   }
 
   @Patch(':locationId')

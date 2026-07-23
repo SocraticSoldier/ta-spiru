@@ -5,6 +5,14 @@ import { Sidebar } from '@/components/admin/sidebar';
 import { SignOutButton } from '@/components/admin/sign-out-button';
 import { apiFetch } from '@/lib/api';
 
+const ROLE_LABELS: Record<string, string> = {
+  ADMIN: 'Admin',
+  MANAGER: 'Manager',
+  RECEPTIONIST: 'Reception',
+  BARBER: 'Barber',
+  WASH_ATTENDANT: 'Car Wash',
+};
+
 const AdminLayout = async ({ children }: { children: ReactNode }): Promise<JSX.Element> => {
   let user: AuthUser | null = null;
   try {
@@ -17,20 +25,22 @@ const AdminLayout = async ({ children }: { children: ReactNode }): Promise<JSX.E
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-6xl gap-8 px-6 py-8">
+    <div className="mx-auto flex min-h-screen max-w-7xl gap-8 px-6 py-8">
       <aside className="w-52 shrink-0">
-        <p className="px-3 text-xs uppercase tracking-[0.3em] text-bronze">Ta&apos; Spiru</p>
-        <p className="mb-6 mt-1 px-3 text-sm text-white/50">Master Admin</p>
-        <Sidebar />
+        <p className="font-display px-3.5 text-2xl text-bronze-light">Ta&rsquo; Spiru</p>
+        <p className="mb-6 mt-1 px-3.5 text-xs uppercase tracking-[0.25em] text-white/40">
+          {user.role === 'RECEPTIONIST' ? 'Reception' : 'Master Admin'}
+        </p>
+        <Sidebar role={user.role} />
       </aside>
-      <div className="flex-1">
+      <div className="min-w-0 flex-1">
         <header className="mb-8 flex items-center justify-between border-b border-white/10 pb-4">
           <div>
             <p className="text-sm text-white/50">Signed in as</p>
             <p className="font-medium">
               {user.firstName} {user.lastName}
-              <span className="ml-2 rounded bg-bronze/15 px-1.5 py-0.5 text-xs text-bronze-light">
-                {user.role}
+              <span className="ml-2 rounded-md bg-bronze/15 px-1.5 py-0.5 text-xs text-bronze-light">
+                {ROLE_LABELS[user.role] ?? user.role}
               </span>
             </p>
           </div>

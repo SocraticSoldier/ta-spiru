@@ -13,6 +13,7 @@ import { QueueModule } from './queue/queue.module';
 import { RedisModule } from './redis/redis.module';
 import { ReportsModule } from './reports/reports.module';
 import { ServicesModule } from './services/services.module';
+import { TimeBlocksModule } from './time-blocks/time-blocks.module';
 import { TimeclockModule } from './timeclock/timeclock.module';
 
 @Module({
@@ -35,6 +36,7 @@ import { TimeclockModule } from './timeclock/timeclock.module';
     QueueModule,
     LoyaltyModule,
     ServicesModule,
+    TimeBlocksModule,
   ],
 })
 export class AppModule {}

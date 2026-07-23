@@ -115,7 +115,7 @@ const EntryCard = ({ entry }: { entry: QueueEntryView }): JSX.Element => {
 
 const Column = ({ title, entries }: { title: string; entries: QueueEntryView[] }): JSX.Element => (
   <section className="flex min-w-0 flex-1 flex-col">
-    <h2 className="mb-4 text-sm font-semibold uppercase tracking-[0.35em] text-white/40">{title}</h2>
+    <h2 className="mb-4 font-sans text-sm font-semibold uppercase tracking-[0.35em] text-white/40">{title}</h2>
     <ul className="flex flex-col gap-3">
       <AnimatePresence mode="popLayout">
         {entries.map((entry) => (
@@ -142,8 +142,8 @@ export const QueueBoard = ({ locationSlug }: QueueBoardProps): JSX.Element => {
     <main className="flex min-h-screen flex-col px-10 py-8">
       <header className="mb-8 flex items-end justify-between border-b border-white/10 pb-6">
         <div>
-          <p className="text-sm uppercase tracking-[0.4em] text-bronze">Ta&apos; Spiru</p>
-          <h1 className="mt-2 text-4xl font-semibold">
+          <p className="font-display text-2xl text-bronze-light">Ta&apos; Spiru</p>
+          <h1 className="mt-1 text-5xl">
             {snapshot?.locationName ?? locationSlug.replaceAll('-', ' ')}
           </h1>
         </div>

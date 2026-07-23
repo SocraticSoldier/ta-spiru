@@ -22,7 +22,7 @@ const InventoryPage = async (): Promise<JSX.Element> => {
   return (
     <section>
       <div className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-semibold">Inventory</h1>
+        <h1 className="text-4xl">Inventory</h1>
         <p className="text-sm text-white/50">Central ledger · all branches</p>
       </div>
 
@@ -34,7 +34,7 @@ const InventoryPage = async (): Promise<JSX.Element> => {
 
       {[...byLocation.entries()].map(([locationName, rows]) => (
         <div key={locationName} className="mt-8">
-          <h2 className="text-sm uppercase tracking-[0.2em] text-white/50">{locationName}</h2>
+          <h2 className="font-sans text-sm font-semibold uppercase tracking-[0.2em] text-white/50">{locationName}</h2>
           <div className="mt-3 overflow-x-auto rounded-xl border border-white/10">
             <table className="w-full min-w-[540px] text-left text-sm">
               <thead className="bg-graphite text-white/60">

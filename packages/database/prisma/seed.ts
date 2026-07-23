@@ -73,17 +73,36 @@ interface StaffSeed {
   branchSlug: string;
 }
 
-const STAFF: readonly StaffSeed[] = [
-  { email: 'barber.naxxar1@taspiru.com', firstName: 'Luca', lastName: 'Borg', role: Role.BARBER, branchSlug: 'naxxar' },
-  { email: 'barber.naxxar2@taspiru.com', firstName: 'Matteo', lastName: 'Vella', role: Role.BARBER, branchSlug: 'naxxar' },
-  { email: 'barber.pama@taspiru.com', firstName: 'Karl', lastName: 'Farrugia', role: Role.BARBER, branchSlug: 'pama' },
-  { email: 'barber.sangwann@taspiru.com', firstName: 'Dylan', lastName: 'Micallef', role: Role.BARBER, branchSlug: 'san-gwann' },
-  { email: 'barber.fgura@taspiru.com', firstName: 'Sean', lastName: 'Camilleri', role: Role.BARBER, branchSlug: 'fgura' },
-  { email: 'barber.sangiljan@taspiru.com', firstName: 'Andrea', lastName: 'Grech', role: Role.BARBER, branchSlug: 'san-giljan' },
-  { email: 'wash.naxxar@taspiru.com', firstName: 'Owen', lastName: 'Zammit', role: Role.WASH_ATTENDANT, branchSlug: 'naxxar' },
-  { email: 'wash.pama@taspiru.com', firstName: 'Jake', lastName: 'Abela', role: Role.WASH_ATTENDANT, branchSlug: 'pama' },
-  { email: 'reception.naxxar@taspiru.com', firstName: 'Elena', lastName: 'Sant', role: Role.RECEPTIONIST, branchSlug: 'naxxar' },
-  { email: 'manager.naxxar@taspiru.com', firstName: 'Chris', lastName: 'Attard', role: Role.MANAGER, branchSlug: 'naxxar' },
+// Real org structure. Branch-less entries (branchSlug: null) are global.
+// TODO: replace the placeholder barber names below with the live roster from
+// taspiru.com/barbers/team (unreachable from this build environment).
+interface OrgSeed extends Omit<StaffSeed, 'branchSlug'> {
+  branchSlug: string | null;
+}
+
+const STAFF: readonly OrgSeed[] = [
+  // Admin profiles
+  { email: 'norbert@taspiru.com', firstName: 'Norbert', lastName: 'Ta Spiru', role: Role.ADMIN, branchSlug: null }, // Owner — barber & car wash
+  { email: 'joane@taspiru.com', firstName: 'Joane', lastName: 'Admin', role: Role.ADMIN, branchSlug: null }, // Barber division admin
+  { email: 'chris@taspiru.com', firstName: 'Chris', lastName: 'Carwash', role: Role.MANAGER, branchSlug: null }, // Car wash manager (cross-branch)
+
+  // Receptionists — the two reception outlets (Naxxar & Fgura)
+  { email: 'andrea@taspiru.com', firstName: 'Andrea', lastName: 'Reception', role: Role.RECEPTIONIST, branchSlug: 'naxxar' },
+  { email: 'clarice@taspiru.com', firstName: 'Clarice', lastName: 'Reception', role: Role.RECEPTIONIST, branchSlug: 'fgura' },
+  { email: 'romina@taspiru.com', firstName: 'Romina', lastName: 'Reception', role: Role.RECEPTIONIST, branchSlug: 'naxxar' },
+
+  // Barbers — PLACEHOLDERS pending the taspiru.com/barbers/team roster
+  { email: 'barber1@taspiru.com', firstName: 'Barber', lastName: 'One (Naxxar)', role: Role.BARBER, branchSlug: 'naxxar' },
+  { email: 'barber2@taspiru.com', firstName: 'Barber', lastName: 'Two (Naxxar)', role: Role.BARBER, branchSlug: 'naxxar' },
+  { email: 'barber3@taspiru.com', firstName: 'Barber', lastName: 'Three (Pama)', role: Role.BARBER, branchSlug: 'pama' },
+  { email: 'barber4@taspiru.com', firstName: 'Barber', lastName: 'Four (San Gwann)', role: Role.BARBER, branchSlug: 'san-gwann' },
+  { email: 'barber5@taspiru.com', firstName: 'Barber', lastName: 'Five (Fgura)', role: Role.BARBER, branchSlug: 'fgura' },
+  { email: 'barber6@taspiru.com', firstName: 'Barber', lastName: 'Six (San Giljan)', role: Role.BARBER, branchSlug: 'san-giljan' },
+
+  // Car wash crew
+  { email: 'martin@taspiru.com', firstName: 'Martin', lastName: 'Supervisor', role: Role.WASH_ATTENDANT, branchSlug: 'naxxar' }, // Supervisor
+  { email: 'jerry@taspiru.com', firstName: 'Jerry', lastName: 'Attendant', role: Role.WASH_ATTENDANT, branchSlug: 'naxxar' },
+  { email: 'kelvin@taspiru.com', firstName: 'Kelvin', lastName: 'Attendant', role: Role.WASH_ATTENDANT, branchSlug: 'pama' },
 ];
 
 const SHIFT_DAYS_AHEAD = 14;
@@ -211,8 +230,8 @@ const main = async (): Promise<void> => {
   );
 
   for (const spec of STAFF) {
-    const locationId = locationBySlug.get(spec.branchSlug);
-    if (!locationId) {
+    const locationId = spec.branchSlug ? (locationBySlug.get(spec.branchSlug) ?? null) : null;
+    if (spec.branchSlug && !locationId) {
       continue;
     }
     const staff = await prisma.user.upsert({
@@ -229,7 +248,7 @@ const main = async (): Promise<void> => {
       },
     });
 
-    if (spec.role !== Role.BARBER && spec.role !== Role.WASH_ATTENDANT) {
+    if ((spec.role !== Role.BARBER && spec.role !== Role.WASH_ATTENDANT) || !locationId) {
       continue;
     }
     // Re-seed the rolling roster: 09:00–19:00 local, Monday–Saturday.

@@ -89,7 +89,7 @@ export class BookingsService {
         barberService.durationMin + COMBO_WASH_BUFFER_MIN,
       );
 
-      const [barbers, resources, appointments] = await Promise.all([
+      const [barbers, resources, appointments, blocks] = await Promise.all([
         this.prisma.user.findMany({
           where: { role: Role.BARBER, locationId, isActive: true },
           select: {
@@ -115,6 +115,10 @@ export class BookingsService {
           },
           select: { barberId: true, resourceId: true, startsAt: true, endsAt: true, lockedUntil: true },
         }),
+        this.prisma.timeBlock.findMany({
+          where: { locationId, startsAt: { lt: close }, endsAt: { gt: open } },
+          select: { barberId: true, startsAt: true, endsAt: true },
+        }),
       ]);
 
       const chairs = resources.filter((resource) => resource.kind === ResourceKind.BARBER_CHAIR);
@@ -132,6 +136,14 @@ export class BookingsService {
         const cutEnd = addMinutes(cursor, barberService.durationMin);
         const bayLockEnd = addMinutes(cursor, bayLockMin);
 
+        if (
+          blocks.some(
+            (block) => block.barberId === null && overlaps(block.startsAt, block.endsAt, cursor, bayLockEnd),
+          )
+        ) {
+          continue;
+        }
+
         const busyBarberIds = new Set(
           appointments
             .filter(
@@ -148,7 +160,11 @@ export class BookingsService {
         const freeBarber = barbers.find(
           (barber) =>
             !busyBarberIds.has(barber.id) &&
-            barber.shifts.some((shift) => shift.startsAt <= cursor && shift.endsAt >= cutEnd),
+            barber.shifts.some((shift) => shift.startsAt <= cursor && shift.endsAt >= cutEnd) &&
+            !blocks.some(
+              (block) =>
+                block.barberId === barber.id && overlaps(block.startsAt, block.endsAt, cursor, cutEnd),
+            ),
         );
         if (!freeBarber) {
           continue;
@@ -235,6 +251,19 @@ export class BookingsService {
       const comboGroupId = randomUUID();
       const [barberAppointment, washAppointment] = await this.prisma.$transaction(
         async (tx) => {
+          const blockConflict = await tx.timeBlock.findFirst({
+            where: {
+              locationId: dto.locationId,
+              startsAt: { lt: bayLockEnd },
+              endsAt: { gt: startsAt },
+              OR: [{ barberId: null }, { barberId: dto.barberId }],
+            },
+            select: { id: true },
+          });
+          if (blockConflict) {
+            throw new ConflictException('This time is blocked out at the selected branch');
+          }
+
           const barberConflict = await tx.appointment.findFirst({
             where: {
               barberId: dto.barberId,
@@ -323,7 +352,7 @@ export class BookingsService {
         throw new BadRequestException(`Service ${query.serviceId} not found or inactive`);
       }
 
-      const [barbers, resources, appointments] = await Promise.all([
+      const [barbers, resources, appointments, blocks] = await Promise.all([
         service.kind === ServiceKind.BARBER
           ? this.prisma.user.findMany({
               where: { role: Role.BARBER, locationId: query.locationId, isActive: true },
@@ -351,6 +380,10 @@ export class BookingsService {
           },
           select: { barberId: true, resourceId: true, startsAt: true, endsAt: true, lockedUntil: true },
         }),
+        this.prisma.timeBlock.findMany({
+          where: { locationId: query.locationId, startsAt: { lt: close }, endsAt: { gt: open } },
+          select: { barberId: true, startsAt: true, endsAt: true },
+        }),
       ]);
 
       const chairs = resources.filter((resource) => resource.kind === ResourceKind.BARBER_CHAIR);
@@ -363,6 +396,14 @@ export class BookingsService {
         cursor = addMinutes(cursor, SLOT_STEP_MIN)
       ) {
         const slotEnd = addMinutes(cursor, service.durationMin);
+
+        if (
+          blocks.some(
+            (block) => block.barberId === null && overlaps(block.startsAt, block.endsAt, cursor, slotEnd),
+          )
+        ) {
+          continue;
+        }
 
         if (service.kind === ServiceKind.BARBER) {
           const busyBarberIds = new Set(
@@ -380,7 +421,11 @@ export class BookingsService {
           const freeBarber = barbers.find(
             (barber) =>
               !busyBarberIds.has(barber.id) &&
-              barber.shifts.some((shift) => shift.startsAt <= cursor && shift.endsAt >= slotEnd),
+              barber.shifts.some((shift) => shift.startsAt <= cursor && shift.endsAt >= slotEnd) &&
+              !blocks.some(
+                (block) =>
+                  block.barberId === barber.id && overlaps(block.startsAt, block.endsAt, cursor, slotEnd),
+              ),
           );
           if (!freeBarber) {
             continue;
@@ -449,6 +494,22 @@ export class BookingsService {
 
       const appointment = await this.prisma.$transaction(
         async (tx) => {
+          const blockConflict = await tx.timeBlock.findFirst({
+            where: {
+              locationId: dto.locationId,
+              startsAt: { lt: endsAt },
+              endsAt: { gt: startsAt },
+              OR:
+                service.kind === ServiceKind.BARBER
+                  ? [{ barberId: null }, { barberId: dto.barberId }]
+                  : [{ barberId: null }],
+            },
+            select: { id: true },
+          });
+          if (blockConflict) {
+            throw new ConflictException('This time is blocked out at the selected branch');
+          }
+
           if (service.kind === ServiceKind.BARBER) {
             const conflict = await tx.appointment.findFirst({
               where: {

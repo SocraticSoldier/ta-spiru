@@ -1,3 +1,4 @@
+import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -20,6 +21,9 @@ interface HomeData {
 const formatEuro = (cents: number): string => `€${(cents / 100).toFixed(2)}`;
 
 const App = (): React.JSX.Element => {
+  const [fontsLoaded] = useFonts({
+    Brewheat: require('./assets/fonts/Brewheat.ttf') as number,
+  });
   const [data, setData] = useState<HomeData | null>(null);
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
@@ -52,8 +56,12 @@ const App = (): React.JSX.Element => {
     <View style={styles.screen}>
       <StatusBar style="light" />
       <ScrollView contentContainerStyle={styles.scroll}>
-        <Text style={styles.brand}>TA&apos; SPIRU</Text>
-        <Text style={styles.headline}>A sharp cut. A spotless car. One booking.</Text>
+        <Text style={fontsLoaded ? [styles.brand, styles.displayFont] : styles.brand}>
+          Ta&apos; Spiru
+        </Text>
+        <Text style={styles.headline}>
+          It&apos;s not just a haircut, it&apos;s a lifestyle.
+        </Text>
 
         {offline ? (
           <Pressable style={styles.offlineBanner} onPress={() => void load()}>
@@ -104,10 +112,11 @@ const styles = StyleSheet.create({
     paddingBottom: 48,
   },
   brand: {
-    color: '#b08d57',
-    fontSize: 13,
-    letterSpacing: 6,
-    fontWeight: '600',
+    color: '#cfae7b',
+    fontSize: 34,
+  },
+  displayFont: {
+    fontFamily: 'Brewheat',
   },
   headline: {
     color: '#ffffff',

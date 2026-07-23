@@ -1,6 +1,7 @@
 import type { JSX } from 'react';
 import type { LocationSummary, RevenueSplitReport } from '@ta-spiru/shared';
 import { apiFetch } from '@/lib/api';
+import { LEDGER_COLORS, locationColor } from '@/lib/colors';
 import { formatEuro, LEDGER_TAG_LABELS } from '@/lib/format';
 
 interface DashboardData {
@@ -25,32 +26,48 @@ const DashboardPage = async (): Promise<JSX.Element> => {
 
   return (
     <section>
-      <h1 className="text-2xl font-semibold">Dashboard</h1>
+      <h1 className="text-4xl">Dashboard</h1>
 
-      <h2 className="mt-8 text-sm uppercase tracking-[0.2em] text-white/50">
+      <h2 className="mt-8 font-sans text-sm font-semibold uppercase tracking-[0.2em] text-white/50">
         Settled revenue by ledger
       </h2>
       <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {(report?.lines ?? []).map((line) => (
-          <div key={line.ledgerTag} className="rounded-xl border border-white/10 bg-graphite p-5">
-            <p className="text-sm text-white/60">{LEDGER_TAG_LABELS[line.ledgerTag] ?? line.ledgerTag}</p>
-            <p className="mt-2 text-2xl font-semibold text-bronze-light">
-              {formatEuro(line.amountCents)}
-            </p>
-            <p className="mt-1 text-xs text-white/40">{line.splitCount} ledger entries</p>
-          </div>
-        ))}
+        {(report?.lines ?? []).map((line) => {
+          const accent = LEDGER_COLORS[line.ledgerTag] ?? LEDGER_COLORS['BARBER_SERVICES'];
+          return (
+            <div
+              key={line.ledgerTag}
+              className="rounded-2xl border border-white/10 p-5"
+              style={{
+                background: `linear-gradient(150deg, ${accent?.soft ?? 'transparent'}, rgba(28,28,30,0.85) 60%)`,
+                boxShadow: `inset 0 2px 0 ${accent?.solid ?? 'transparent'}`,
+              }}
+            >
+              <p className="text-sm text-white/60">{LEDGER_TAG_LABELS[line.ledgerTag] ?? line.ledgerTag}</p>
+              <p className="mt-2 text-3xl font-semibold tabular-nums" style={{ color: accent?.text }}>
+                {formatEuro(line.amountCents)}
+              </p>
+              <p className="mt-1 text-xs text-white/40">{line.splitCount} ledger entries</p>
+            </div>
+          );
+        })}
         {report === null ? (
           <div className="rounded-xl border border-dashed border-white/15 p-5 text-sm text-white/50 sm:col-span-2 lg:col-span-4">
-            Revenue report unavailable — check that the API is running and your role is ADMIN.
+            Revenue report unavailable — visible to owner/admin accounts only.
           </div>
         ) : null}
       </div>
 
-      <h2 className="mt-10 text-sm uppercase tracking-[0.2em] text-white/50">Branch network</h2>
+      <h2 className="mt-10 font-sans text-sm font-semibold uppercase tracking-[0.2em] text-white/50">
+        Branch network
+      </h2>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         {locations.map((location) => (
-          <div key={location.id} className="rounded-xl border border-white/10 bg-graphite p-5">
+          <div
+            key={location.id}
+            className="rounded-2xl border border-white/10 bg-graphite p-5"
+            style={{ boxShadow: `inset 3px 0 0 ${locationColor(location.slug)}` }}
+          >
             <p className="font-medium">{location.name}</p>
             <p className="mt-1 text-sm text-white/60">{location.address}</p>
             <p className="mt-3 text-xs text-white/40">

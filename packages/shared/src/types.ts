@@ -238,3 +238,21 @@ export interface EcomCheckoutResponse {
   totalCents: number;
   paymentIntent: PaymentIntentResponse;
 }
+
+/** Admin-managed unavailability window; barberId null blocks the whole location. */
+export interface TimeBlockRow {
+  id: string;
+  locationId: string;
+  barberId: string | null;
+  barberName: string | null;
+  startsAt: string;
+  endsAt: string;
+  reason: string | null;
+}
+
+export interface StaffOption {
+  id: string;
+  name: string;
+  role: RoleName;
+  locationId: string | null;
+}

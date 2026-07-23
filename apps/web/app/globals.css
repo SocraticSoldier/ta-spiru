@@ -2,10 +2,45 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: 'Brewheat';
+  src: url('/fonts/Brewheat.woff2') format('woff2'),
+       url('/fonts/Brewheat.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   color-scheme: dark;
 }
 
-body {
-  @apply bg-graphite-deep text-white antialiased;
+@layer base {
+  body {
+    @apply bg-graphite-deep text-white antialiased;
+    background-image:
+      radial-gradient(1200px 500px at 85% -10%, rgba(176, 141, 87, 0.07), transparent 60%),
+      radial-gradient(900px 420px at -10% 110%, rgba(63, 193, 176, 0.05), transparent 60%);
+    background-attachment: fixed;
+  }
+
+  h1, h2 {
+    font-family: 'Brewheat', 'Georgia', serif;
+    font-weight: 400;
+    letter-spacing: 0.01em;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: 'Brewheat', 'Georgia', serif;
+    font-weight: 400;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

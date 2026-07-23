@@ -1,24 +1,35 @@
 import Link from 'next/link';
 import type { JSX } from 'react';
-import type { AppointmentRow, LocationSummary } from '@ta-spiru/shared';
+import type {
+  AppointmentRow,
+  AuthUser,
+  LocationSummary,
+  StaffOption,
+  TimeBlockRow,
+} from '@ta-spiru/shared';
 import { apiFetch } from '@/lib/api';
+import { KIND_COLORS, locationColor } from '@/lib/colors';
+import { formatTimeMalta, maltaHour, shiftDate, todayMalta } from '@/lib/time';
+import { createTimeBlock, deleteTimeBlock } from './actions';
 
 interface CalendarSearchParams {
   locationId?: string;
   date?: string;
 }
 
-const formatTime = (iso: string): string =>
-  new Date(iso).toLocaleTimeString('en-MT', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Malta' });
+type CalendarEntry = AppointmentRow & { locationSlug: string; locationName: string };
+type CalendarBlock = TimeBlockRow & { locationSlug: string; locationName: string };
 
-const STATUS_STYLES: Record<string, string> = {
-  PENDING_PAYMENT: 'bg-amber-500/15 text-amber-400',
-  CONFIRMED: 'bg-emerald-500/10 text-emerald-400',
-  CHECKED_IN: 'bg-sky-500/15 text-sky-400',
-  IN_PROGRESS: 'bg-bronze/15 text-bronze-light',
-  COMPLETED: 'bg-white/10 text-white/60',
-  CANCELLED: 'bg-red-500/15 text-red-400',
-  NO_SHOW: 'bg-red-500/15 text-red-400',
+const DAY_HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
+
+const STATUS_DOTS: Record<string, string> = {
+  PENDING_PAYMENT: '#f59e0b',
+  CONFIRMED: '#4ade80',
+  CHECKED_IN: '#38bdf8',
+  IN_PROGRESS: '#cfae7b',
+  COMPLETED: 'rgba(255,255,255,0.35)',
+  CANCELLED: '#f87171',
+  NO_SHOW: '#f87171',
 };
 
 const CalendarPage = async ({
@@ -27,101 +38,221 @@ const CalendarPage = async ({
   searchParams: Promise<CalendarSearchParams>;
 }): Promise<JSX.Element> => {
   const params = await searchParams;
-  const date = params.date ?? new Date().toISOString().slice(0, 10);
+  const date = params.date ?? todayMalta();
+  const selectedId = params.locationId ?? 'all';
 
+  let user: AuthUser | null = null;
   let locations: LocationSummary[] = [];
   try {
-    locations = await apiFetch<LocationSummary[]>('/locations');
+    [user, locations] = await Promise.all([
+      apiFetch<AuthUser>('/auth/me'),
+      apiFetch<LocationSummary[]>('/locations'),
+    ]);
   } catch {
     locations = [];
   }
-  const selected = locations.find((location) => location.id === params.locationId) ?? locations[0];
+  const canManageBlocks = user?.role === 'ADMIN' || user?.role === 'MANAGER';
+  const visible =
+    selectedId === 'all' ? locations : locations.filter((location) => location.id === selectedId);
 
-  let appointments: AppointmentRow[] | null = null;
-  if (selected) {
-    try {
-      appointments = await apiFetch<AppointmentRow[]>(
-        `/bookings/day?locationId=${encodeURIComponent(selected.id)}&date=${encodeURIComponent(date)}`,
+  const entries: CalendarEntry[] = [];
+  const blocks: CalendarBlock[] = [];
+  const barbers: (StaffOption & { locationName: string })[] = [];
+  await Promise.all(
+    visible.map(async (location) => {
+      const [dayRows, blockRows, barberRows] = await Promise.all([
+        apiFetch<AppointmentRow[]>(
+          `/bookings/day?locationId=${location.id}&date=${date}`,
+        ).catch((): AppointmentRow[] => []),
+        apiFetch<TimeBlockRow[]>(`/time-blocks?locationId=${location.id}&date=${date}`).catch(
+          (): TimeBlockRow[] => [],
+        ),
+        apiFetch<StaffOption[]>(`/locations/${location.id}/barbers`).catch((): StaffOption[] => []),
+      ]);
+      entries.push(
+        ...dayRows.map((row) => ({ ...row, locationSlug: location.slug, locationName: location.name })),
       );
-    } catch {
-      appointments = null;
-    }
-  }
+      blocks.push(
+        ...blockRows.map((row) => ({ ...row, locationSlug: location.slug, locationName: location.name })),
+      );
+      barbers.push(...barberRows.map((row) => ({ ...row, locationName: location.name })));
+    }),
+  );
+  entries.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  blocks.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+
+  const query = (nextDate: string, nextLocation: string): string =>
+    `/admin/calendar?locationId=${nextLocation}&date=${nextDate}`;
 
   return (
     <section>
-      <div className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-semibold">Calendar</h1>
-        <p className="text-sm text-white/50">{date} · Europe/Malta</p>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h1 className="text-4xl">Calendar</h1>
+        <div className="flex items-center gap-2 text-sm">
+          <Link href={query(shiftDate(date, -1), selectedId)} className="rounded-lg border border-white/10 px-3 py-1.5 text-white/60 transition hover:border-bronze hover:text-bronze-light">←</Link>
+          <Link href={query(todayMalta(), selectedId)} className="rounded-lg border border-white/10 px-3 py-1.5 text-white/60 transition hover:border-bronze hover:text-bronze-light">Today</Link>
+          <Link href={query(shiftDate(date, 1), selectedId)} className="rounded-lg border border-white/10 px-3 py-1.5 text-white/60 transition hover:border-bronze hover:text-bronze-light">→</Link>
+          <span className="ml-2 tabular-nums text-white/60">{date}</span>
+        </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-5 flex flex-wrap items-center gap-2">
+        <Link
+          href={query(date, 'all')}
+          className={`rounded-full px-3.5 py-1.5 text-sm transition ${
+            selectedId === 'all'
+              ? 'bg-white/15 text-white'
+              : 'border border-white/10 text-white/60 hover:text-white'
+          }`}
+        >
+          All branches
+        </Link>
         {locations.map((location) => (
           <Link
             key={location.id}
-            href={`/admin/calendar?locationId=${location.id}&date=${date}`}
-            className={`rounded-full px-3 py-1.5 text-sm transition ${
-              selected?.id === location.id
-                ? 'bg-bronze/20 text-bronze-light'
+            href={query(date, location.id)}
+            className={`flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm transition ${
+              selectedId === location.id
+                ? 'bg-white/15 text-white'
                 : 'border border-white/10 text-white/60 hover:text-white'
             }`}
           >
+            <span aria-hidden className="h-2 w-2 rounded-full" style={{ backgroundColor: locationColor(location.slug) }} />
             {location.name}
           </Link>
         ))}
+        <span className="mx-2 hidden h-4 w-px bg-white/10 sm:block" />
+        <span className="flex items-center gap-1.5 text-xs text-white/50">
+          <span aria-hidden className="h-2 w-4 rounded-sm" style={{ backgroundColor: KIND_COLORS.BARBER.solid }} /> Barber
+        </span>
+        <span className="flex items-center gap-1.5 text-xs text-white/50">
+          <span aria-hidden className="h-2 w-4 rounded-sm" style={{ backgroundColor: KIND_COLORS.WASH.solid }} /> Car wash
+        </span>
       </div>
 
-      {appointments === null ? (
-        <div className="mt-6 rounded-xl border border-dashed border-white/15 p-8 text-sm text-white/50">
-          Schedule unavailable — check that the API is running.
-        </div>
-      ) : appointments.length === 0 ? (
-        <div className="mt-6 rounded-xl border border-dashed border-white/15 p-8 text-sm text-white/50">
-          No appointments booked for this day yet.
-        </div>
-      ) : (
-        <div className="mt-6 overflow-x-auto rounded-xl border border-white/10">
-          <table className="w-full min-w-[640px] text-left text-sm">
-            <thead className="bg-graphite text-white/60">
-              <tr>
-                <th className="px-4 py-2.5 font-medium">Time</th>
-                <th className="px-4 py-2.5 font-medium">Customer</th>
-                <th className="px-4 py-2.5 font-medium">Service</th>
-                <th className="px-4 py-2.5 font-medium">Assigned to</th>
-                <th className="px-4 py-2.5 font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {appointments.map((appointment) => (
-                <tr key={appointment.id}>
-                  <td className="px-4 py-2.5 whitespace-nowrap">
-                    {formatTime(appointment.startsAt)} – {formatTime(appointment.endsAt)}
-                  </td>
-                  <td className="px-4 py-2.5">{appointment.customerName}</td>
-                  <td className="px-4 py-2.5">
-                    {appointment.serviceName}
-                    {appointment.comboGroupId ? (
-                      <span className="ml-2 rounded bg-bronze/15 px-1.5 py-0.5 text-xs text-bronze-light">
-                        Combo
-                      </span>
-                    ) : null}
-                  </td>
-                  <td className="px-4 py-2.5 text-white/70">
-                    {appointment.barberName ?? appointment.resourceName ?? '—'}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <span
-                      className={`rounded px-1.5 py-0.5 text-xs ${STATUS_STYLES[appointment.status] ?? 'bg-white/10 text-white/60'}`}
-                    >
-                      {appointment.status.replaceAll('_', ' ')}
+      <div className="mt-6 flex flex-col">
+        {DAY_HOURS.map((hour) => {
+          const hourEntries = entries.filter((entry) => maltaHour(entry.startsAt) === hour);
+          const hourBlocks = blocks.filter((block) => maltaHour(block.startsAt) === hour);
+          return (
+            <div key={hour} className="flex gap-4 border-t border-white/5 py-2.5">
+              <p className="w-12 shrink-0 pt-1 text-right text-xs tabular-nums text-white/35">
+                {String(hour).padStart(2, '0')}:00
+              </p>
+              <div className="flex min-h-[30px] flex-1 flex-wrap items-start gap-2">
+                {hourBlocks.map((block) => (
+                  <div
+                    key={block.id}
+                    className="flex items-center gap-2.5 rounded-lg border border-red-400/25 bg-red-500/10 px-3 py-1.5 text-sm text-red-200/90"
+                  >
+                    <span className="tabular-nums text-red-200/60">
+                      {formatTimeMalta(block.startsAt)}–{formatTimeMalta(block.endsAt)}
                     </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    Blocked · {block.barberName ?? `all of ${block.locationName}`}
+                    {block.reason ? <span className="text-red-200/60">({block.reason})</span> : null}
+                    {canManageBlocks ? (
+                      <form action={deleteTimeBlock}>
+                        <input type="hidden" name="blockId" value={block.id} />
+                        <button type="submit" className="text-red-200/60 transition hover:text-red-100" aria-label="Remove block">
+                          ✕
+                        </button>
+                      </form>
+                    ) : null}
+                  </div>
+                ))}
+                {hourEntries.map((entry) => {
+                  const accent = KIND_COLORS[entry.serviceKind];
+                  return (
+                    <div
+                      key={entry.id}
+                      className="flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm"
+                      style={{
+                        background: accent.soft,
+                        boxShadow: `inset 3px 0 0 ${accent.solid}`,
+                      }}
+                    >
+                      <span
+                        aria-hidden
+                        title={entry.locationName}
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: locationColor(entry.locationSlug) }}
+                      />
+                      <span className="tabular-nums text-white/60">
+                        {formatTimeMalta(entry.startsAt)}
+                      </span>
+                      <span className="font-medium">{entry.customerName}</span>
+                      <span className="text-white/60">{entry.serviceName}</span>
+                      {entry.barberName ?? entry.resourceName ? (
+                        <span className="text-white/40">· {entry.barberName ?? entry.resourceName}</span>
+                      ) : null}
+                      {entry.comboGroupId ? (
+                        <span className="rounded bg-bronze/20 px-1.5 py-0.5 text-xs text-bronze-light">Combo</span>
+                      ) : null}
+                      <span
+                        aria-hidden
+                        title={entry.status}
+                        className="h-1.5 w-1.5 rounded-full"
+                        style={{ backgroundColor: STATUS_DOTS[entry.status] ?? '#9ca3af' }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {canManageBlocks ? (
+        <div className="mt-10 rounded-2xl border border-white/10 bg-graphite p-6">
+          <h2 className="text-2xl">Block out time</h2>
+          <p className="mt-1 text-sm text-white/50">
+            Breaks, closures and holidays — blocked windows disappear from client booking immediately.
+          </p>
+          <form action={createTimeBlock} className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <label className="flex flex-col gap-1.5 text-sm text-white/60">
+              Branch
+              <select name="locationId" required className="rounded-lg border border-white/10 bg-graphite-deep px-3 py-2 text-white outline-none focus:border-bronze">
+                {locations.map((location) => (
+                  <option key={location.id} value={location.id}>{location.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5 text-sm text-white/60">
+              Who
+              <select name="barberId" className="rounded-lg border border-white/10 bg-graphite-deep px-3 py-2 text-white outline-none focus:border-bronze">
+                <option value="">Entire branch (chairs + bays)</option>
+                {barbers.map((barber) => (
+                  <option key={barber.id} value={barber.id}>
+                    {barber.name} — {barber.locationName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5 text-sm text-white/60">
+              Date
+              <input name="date" type="date" defaultValue={date} required className="rounded-lg border border-white/10 bg-graphite-deep px-3 py-2 text-white outline-none focus:border-bronze" />
+            </label>
+            <label className="flex flex-col gap-1.5 text-sm text-white/60">
+              From
+              <input name="from" type="time" defaultValue="12:00" required className="rounded-lg border border-white/10 bg-graphite-deep px-3 py-2 text-white outline-none focus:border-bronze" />
+            </label>
+            <label className="flex flex-col gap-1.5 text-sm text-white/60">
+              Until
+              <input name="to" type="time" defaultValue="13:00" required className="rounded-lg border border-white/10 bg-graphite-deep px-3 py-2 text-white outline-none focus:border-bronze" />
+            </label>
+            <label className="flex flex-col gap-1.5 text-sm text-white/60">
+              Reason
+              <input name="reason" type="text" placeholder="Lunch break, training…" className="rounded-lg border border-white/10 bg-graphite-deep px-3 py-2 text-white outline-none focus:border-bronze" />
+            </label>
+            <div className="flex items-end sm:col-span-2 lg:col-span-3">
+              <button type="submit" className="rounded-lg bg-bronze px-5 py-2.5 font-medium text-graphite-deep transition hover:bg-bronze-light">
+                Block it out
+              </button>
+            </div>
+          </form>
         </div>
-      )}
+      ) : null}
     </section>
   );
 };
