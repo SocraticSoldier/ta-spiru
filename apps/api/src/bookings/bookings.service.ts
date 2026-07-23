@@ -21,6 +21,7 @@ import {
   AvailabilitySlot,
   COMBO_WASH_BUFFER_MIN,
   ComboSlot,
+  MyBookingRow,
   SLOT_STEP_MIN,
 } from '@ta-spiru/shared';
 import { PrismaService } from '../prisma/prisma.service';
@@ -625,6 +626,80 @@ export class BookingsService {
         throw error;
       }
       throw new InternalServerErrorException('Failed to load day schedule');
+    }
+  }
+
+  /** A customer's own bookings, newest first. */
+  async myBookings(customerId: string): Promise<MyBookingRow[]> {
+    try {
+      const appointments = await this.prisma.appointment.findMany({
+        where: { customerId },
+        include: {
+          location: { select: { name: true } },
+          service: { select: { name: true, kind: true, priceCents: true } },
+          barber: { select: { firstName: true, lastName: true } },
+          resource: { select: { name: true } },
+        },
+        orderBy: { startsAt: 'desc' },
+        take: 50,
+      });
+      return appointments.map((appointment) => ({
+        id: appointment.id,
+        comboGroupId: appointment.comboGroupId,
+        locationName: appointment.location.name,
+        serviceName: appointment.service.name,
+        serviceKind: appointment.service.kind,
+        priceCents: appointment.service.priceCents,
+        startsAt: appointment.startsAt.toISOString(),
+        endsAt: appointment.endsAt.toISOString(),
+        status: appointment.status,
+        barberName: appointment.barber
+          ? `${appointment.barber.firstName} ${appointment.barber.lastName}`
+          : null,
+        resourceName: appointment.resource?.name ?? null,
+        vehicleReg: appointment.vehicleReg,
+      }));
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to load bookings');
+    }
+  }
+
+  /** Cancels a customer's future booking; a combo cancels both segments. */
+  async cancelBooking(appointmentId: string, customerId: string): Promise<{ cancelled: number }> {
+    try {
+      const appointment = await this.prisma.appointment.findFirst({
+        where: { id: appointmentId, customerId },
+        select: { id: true, status: true, startsAt: true, comboGroupId: true },
+      });
+      if (!appointment) {
+        throw new NotFoundException(`Booking ${appointmentId} not found`);
+      }
+      if (appointment.startsAt <= new Date()) {
+        throw new BadRequestException('Past bookings cannot be cancelled');
+      }
+      const cancellable: AppointmentStatus[] = [
+        AppointmentStatus.PENDING_PAYMENT,
+        AppointmentStatus.CONFIRMED,
+      ];
+      if (!cancellable.includes(appointment.status)) {
+        throw new ConflictException(`A ${appointment.status} booking cannot be cancelled`);
+      }
+
+      const result = await this.prisma.appointment.updateMany({
+        where: appointment.comboGroupId
+          ? { comboGroupId: appointment.comboGroupId, customerId }
+          : { id: appointment.id },
+        data: { status: AppointmentStatus.CANCELLED },
+      });
+      return { cancelled: result.count };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to cancel booking');
     }
   }
 

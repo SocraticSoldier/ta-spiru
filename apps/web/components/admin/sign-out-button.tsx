@@ -4,14 +4,14 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { JSX } from 'react';
 
-export const SignOutButton = (): JSX.Element => {
+export const SignOutButton = ({ redirectTo = '/admin/login' }: { redirectTo?: string }): JSX.Element => {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
   const signOut = async (): Promise<void> => {
     setBusy(true);
     await fetch('/api/session', { method: 'DELETE' });
-    router.push('/admin/login');
+    router.push(redirectTo);
     router.refresh();
   };
 

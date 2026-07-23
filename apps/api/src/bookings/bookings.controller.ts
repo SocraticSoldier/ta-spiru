@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { Role } from '@ta-spiru/database';
-import { AppointmentRow, AvailabilitySlot, ComboSlot } from '@ta-spiru/shared';
+import { AppointmentRow, AvailabilitySlot, ComboSlot, MyBookingRow } from '@ta-spiru/shared';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -49,5 +49,20 @@ export class BookingsController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<ComboBookingResult> {
     return this.bookingsService.createComboBooking(dto, user.id);
+  }
+
+  @Get('mine')
+  @UseGuards(JwtAuthGuard)
+  myBookings(@CurrentUser() user: AuthenticatedUser): Promise<MyBookingRow[]> {
+    return this.bookingsService.myBookings(user.id);
+  }
+
+  @Post(':appointmentId/cancel')
+  @UseGuards(JwtAuthGuard)
+  cancelBooking(
+    @Param('appointmentId') appointmentId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<{ cancelled: number }> {
+    return this.bookingsService.cancelBooking(appointmentId, user.id);
   }
 }

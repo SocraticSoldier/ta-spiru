@@ -256,3 +256,27 @@ export interface StaffOption {
   role: RoleName;
   locationId: string | null;
 }
+
+export interface MyBookingRow {
+  id: string;
+  comboGroupId: string | null;
+  locationName: string;
+  serviceName: string;
+  serviceKind: ServiceKindName;
+  priceCents: number;
+  startsAt: string;
+  endsAt: string;
+  status: string;
+  barberName: string | null;
+  resourceName: string | null;
+  vehicleReg: string | null;
+}
+
+export interface BookingConfirmation {
+  status: 'booked';
+  appointmentIds: string[];
+  comboGroupId: string | null;
+  startsAt: string;
+  amountCents: number;
+  paymentReference: string;
+}

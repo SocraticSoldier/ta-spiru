@@ -160,7 +160,7 @@ export const IntroSplit = (): JSX.Element => {
             delay={0.15}
           />
 
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center pt-8">
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-start justify-center pt-8">
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -171,6 +171,12 @@ export const IntroSplit = (): JSX.Element => {
               <p className="font-script mt-0.5 text-lg text-bronze">
                 It&rsquo;s not just a haircut, it&rsquo;s a lifestyle!
               </p>
+              <Link
+                href="/book"
+                className="pointer-events-auto mt-4 rounded-full bg-bronze px-6 py-2 text-sm font-semibold uppercase tracking-[0.15em] text-graphite-deep transition hover:bg-bronze-light"
+              >
+                Book now
+              </Link>
             </motion.div>
           </div>
         </div>

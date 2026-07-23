@@ -91,9 +91,22 @@ export const ServiceStream = async ({ kind, eyebrow, title, copy }: ServiceStrea
         ))}
       </div>
 
-      <p className="mt-14 text-sm text-white/40">
-        Book in the Ta&rsquo; Spiru app — or walk in and join the live queue on the door display.
-      </p>
+      <div className="mt-14 flex flex-wrap items-center gap-4">
+        <Link
+          href={`/book?stream=${kind === 'BARBER' ? 'CUT' : 'WASH'}`}
+          className="rounded-lg px-6 py-2.5 font-medium text-graphite-deep transition hover:opacity-90"
+          style={{ backgroundColor: accent.solid }}
+        >
+          Book now
+        </Link>
+        <Link
+          href="/book?stream=COMBO"
+          className="rounded-lg border border-white/15 px-6 py-2.5 text-white/70 transition hover:text-white"
+        >
+          Combo Wash &amp; Cut
+        </Link>
+        <p className="text-sm text-white/40">or walk in and join the live queue.</p>
+      </div>
     </main>
   );
 };

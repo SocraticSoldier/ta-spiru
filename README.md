@@ -39,6 +39,12 @@ pnpm dev
 
 Passwords: staff `Staff!2026` (kiosk PIN `1234`) · system fallback `admin@taspiru.com` / `ChangeMe!2026` · `customer@taspiru.com` / `Customer!2026`.
 
+## Customer experience
+
+- **Booking wizard** (`/book`): Cut, Wash, or Combo Wash & Cut — branch → services → live colour-coded slots (blocked windows and taken slots never appear) → inline sign-in/sign-up gate → booked as `PENDING_PAYMENT` with a Trust Payments intent opened (splits per stream). Deep-linkable via `/book?stream=CUT|WASH|COMBO`.
+- **Accounts**: `POST /auth/register` self-service customer signup; `/signin` with httpOnly cookie sessions; middleware-guarded `/account`.
+- **Customer dashboard** (`/account`): loyalty wallet card with tier + gold QR (scannable at reception via `POST /loyalty/scan`), upcoming bookings with one-click cancel (a combo cancels both segments), history, and retail orders.
+
 ## UI & scheduling controls
 
 - **Brewheat** is the brand display face (self-hosted in `apps/web/public/fonts`, loaded via `expo-font` on mobile).

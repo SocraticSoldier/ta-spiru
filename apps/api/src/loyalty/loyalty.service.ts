@@ -166,11 +166,19 @@ export class LoyaltyService {
   }
 
   private async getOrCreate(userId: string): Promise<LoyaltyAccount> {
-    return this.prisma.loyaltyAccount.upsert({
-      where: { userId },
-      update: {},
-      create: { userId },
-    });
+    try {
+      return await this.prisma.loyaltyAccount.upsert({
+        where: { userId },
+        update: {},
+        create: { userId },
+      });
+    } catch (error) {
+      // Two first-visit requests can race the create; the loser re-reads.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        return this.prisma.loyaltyAccount.findUniqueOrThrow({ where: { userId } });
+      }
+      throw error;
+    }
   }
 
   private wrap(error: unknown, fallback: string): HttpException {

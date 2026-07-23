@@ -2,6 +2,7 @@ import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@n
 import { AuthService } from './auth.service';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { LoginDto } from './dto/login.dto';
+import { RegisterDto } from './dto/register.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthenticatedUser, LoginResponse } from './interfaces/auth.interfaces';
 
@@ -13,6 +14,11 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   login(@Body() dto: LoginDto): Promise<LoginResponse> {
     return this.authService.login(dto);
+  }
+
+  @Post('register')
+  register(@Body() dto: RegisterDto): Promise<LoginResponse> {
+    return this.authService.register(dto);
   }
 
   @Get('me')
