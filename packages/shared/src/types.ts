@@ -207,6 +207,18 @@ export interface BarberSummary {
   photoUrl: string | null;
 }
 
+/**
+ * A client visit on the barber's own kiosk. By policy the barber sees ONLY the
+ * client's name and the requested services — no contact details, notes or price.
+ */
+export interface BarberScheduleRow {
+  startsAt: string;
+  endsAt: string;
+  status: string;
+  clientName: string;
+  services: string[];
+}
+
 /** A service as offered by a specific barber, with price/duration resolved. */
 export interface BarberServiceSummary {
   serviceId: string;
