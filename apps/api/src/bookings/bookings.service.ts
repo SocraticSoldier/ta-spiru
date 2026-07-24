@@ -22,7 +22,9 @@ import {
   COMBO_WASH_BUFFER_MIN,
   ComboSlot,
   MyBookingRow,
+  resolveServicePricing,
   SLOT_STEP_MIN,
+  type SeniorityName,
 } from '@ta-spiru/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { fullName } from '../common/name.util';
@@ -52,6 +54,64 @@ export interface ComboBookingResult {
 @Injectable()
 export class BookingsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Resolve the price, duration and daily cap for a barber service as offered by
+   * a specific barber (seniority tier + per-member override). Throws if the
+   * barber has disabled the service.
+   */
+  private async resolveBarberPricing(
+    service: Pick<Service, 'id' | 'priceCents' | 'durationMin'>,
+    barberId: string,
+  ): Promise<{ priceCents: number; durationMin: number; maxDaily: number | null }> {
+    const [barber, tiers, override] = await Promise.all([
+      this.prisma.user.findUnique({ where: { id: barberId }, select: { seniority: true } }),
+      this.prisma.serviceTier.findMany({ where: { serviceId: service.id } }),
+      this.prisma.teamMemberService.findUnique({
+        where: { userId_serviceId: { userId: barberId, serviceId: service.id } },
+      }),
+    ]);
+    const resolved = resolveServicePricing(
+      { priceCents: service.priceCents, durationMin: service.durationMin },
+      tiers.map((t) => ({
+        seniority: t.seniority as SeniorityName,
+        priceCents: t.priceCents,
+        durationMin: t.durationMin,
+      })),
+      (barber?.seniority as SeniorityName) ?? null,
+      override,
+    );
+    if (!resolved) {
+      throw new BadRequestException('This barber does not offer the selected service');
+    }
+    return resolved;
+  }
+
+  /** Refuse the booking once a barber hits their per-day cap for a service. */
+  private async assertDailyCap(
+    tx: Prisma.TransactionClient,
+    barberId: string,
+    serviceId: string,
+    startsAt: Date,
+    maxDaily: number | null,
+  ): Promise<void> {
+    if (maxDaily == null) return;
+    const dayStart = new Date(
+      Date.UTC(startsAt.getUTCFullYear(), startsAt.getUTCMonth(), startsAt.getUTCDate()),
+    );
+    const dayEnd = addMinutes(dayStart, 24 * 60);
+    const count = await tx.appointment.count({
+      where: {
+        barberId,
+        serviceId,
+        status: { in: [...ACTIVE_STATUSES] },
+        startsAt: { gte: dayStart, lt: dayEnd },
+      },
+    });
+    if (count >= maxDaily) {
+      throw new ConflictException('This barber has reached the daily limit for this service');
+    }
+  }
 
   /**
    * Finds every slot where a barber (with chair capacity) and a wash bay are
@@ -221,11 +281,13 @@ export class BookingsService {
       if (Number.isNaN(startsAt.getTime()) || startsAt <= new Date()) {
         throw new BadRequestException('startsAt must be a future ISO-8601 timestamp');
       }
-      const cutEnd = addMinutes(startsAt, barberService.durationMin);
+      // Barber segment priced & timed for this barber; wash segment is flat.
+      const barberPricing = await this.resolveBarberPricing(barberService, dto.barberId);
+      const cutEnd = addMinutes(startsAt, barberPricing.durationMin);
       const washEnd = addMinutes(startsAt, washService.durationMin);
       const bayLockEnd = addMinutes(
         startsAt,
-        Math.max(washService.durationMin, barberService.durationMin + COMBO_WASH_BUFFER_MIN),
+        Math.max(washService.durationMin, barberPricing.durationMin + COMBO_WASH_BUFFER_MIN),
       );
 
       const [barber, bay] = await Promise.all([
@@ -266,6 +328,8 @@ export class BookingsService {
             throw new ConflictException('This time is blocked out at the selected branch');
           }
 
+          await this.assertDailyCap(tx, dto.barberId, barberService.id, startsAt, barberPricing.maxDaily);
+
           const barberConflict = await tx.appointment.findFirst({
             where: {
               barberId: dto.barberId,
@@ -301,6 +365,7 @@ export class BookingsService {
               startsAt,
               endsAt: cutEnd,
               lockedUntil: cutEnd,
+              priceCentsSnapshot: barberPricing.priceCents,
               comboGroupId,
               notes: dto.notes ?? null,
             },
@@ -314,6 +379,7 @@ export class BookingsService {
               startsAt,
               endsAt: washEnd,
               lockedUntil: bayLockEnd,
+              priceCentsSnapshot: washService.priceCents,
               comboGroupId,
               vehicleReg: dto.vehicleReg ?? null,
             },
@@ -492,7 +558,18 @@ export class BookingsService {
       if (Number.isNaN(startsAt.getTime()) || startsAt <= new Date()) {
         throw new BadRequestException('startsAt must be a future ISO-8601 timestamp');
       }
-      const endsAt = addMinutes(startsAt, service.durationMin);
+
+      // Resolve price & duration for this barber (seniority tier + override).
+      let priceCents = service.priceCents;
+      let durationMin = service.durationMin;
+      let maxDaily: number | null = null;
+      if (service.kind === ServiceKind.BARBER && dto.barberId) {
+        const resolved = await this.resolveBarberPricing(service, dto.barberId);
+        priceCents = resolved.priceCents;
+        durationMin = resolved.durationMin;
+        maxDaily = resolved.maxDaily;
+      }
+      const endsAt = addMinutes(startsAt, durationMin);
 
       const appointment = await this.prisma.$transaction(
         async (tx) => {
@@ -513,6 +590,7 @@ export class BookingsService {
           }
 
           if (service.kind === ServiceKind.BARBER) {
+            await this.assertDailyCap(tx, dto.barberId as string, service.id, startsAt, maxDaily);
             const conflict = await tx.appointment.findFirst({
               where: {
                 barberId: dto.barberId,
@@ -550,6 +628,7 @@ export class BookingsService {
               startsAt,
               endsAt,
               lockedUntil: endsAt,
+              priceCentsSnapshot: priceCents,
               vehicleReg: dto.vehicleReg ?? null,
               notes: dto.notes ?? null,
             },
@@ -650,7 +729,7 @@ export class BookingsService {
         locationName: appointment.location.name,
         serviceName: appointment.service.name,
         serviceKind: appointment.service.kind,
-        priceCents: appointment.service.priceCents,
+        priceCents: appointment.priceCentsSnapshot ?? appointment.service.priceCents,
         startsAt: appointment.startsAt.toISOString(),
         endsAt: appointment.endsAt.toISOString(),
         status: appointment.status,
