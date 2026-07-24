@@ -34,16 +34,79 @@ interface ServiceSeed {
   priceCents: number;
   ledgerTag: LedgerTag;
   isComboEligible: boolean;
+  isQuoteOnly?: boolean;
 }
 
+// Real Ta' Spiru menus. Barber = Haircuts + Beard Grooming + Pampering (all BARBER).
+// Car wash = size-priced washes as discrete rows (Small / Medium / Large-SUV),
+// flat detailing, and quote-on-inspection services (isQuoteOnly, priceCents 0).
+// NB: slugs `skin-fade` and `exterior-wash` are kept — e2e tests reference them.
+const HAIR = LedgerTag.BARBER_SERVICES;
+const WASH = LedgerTag.CAR_DETAILING;
+const B = ServiceKind.BARBER;
+const W = ServiceKind.WASH;
+
 const SERVICES: readonly ServiceSeed[] = [
-  { slug: 'skin-fade', name: 'Skin Fade', kind: ServiceKind.BARBER, durationMin: 45, priceCents: 2500, ledgerTag: LedgerTag.BARBER_SERVICES, isComboEligible: true },
-  { slug: 'haircut-beard-sculpt', name: 'Haircut & Beard Sculpt (Hot Towel)', kind: ServiceKind.BARBER, durationMin: 60, priceCents: 3500, ledgerTag: LedgerTag.BARBER_SERVICES, isComboEligible: true },
-  { slug: 'deep-cleansing-facial', name: 'Deep-Cleansing Facial Treatment', kind: ServiceKind.BARBER, durationMin: 40, priceCents: 3000, ledgerTag: LedgerTag.BARBER_SERVICES, isComboEligible: false },
-  { slug: 'exterior-wash', name: 'Exterior Wash', kind: ServiceKind.WASH, durationMin: 30, priceCents: 1500, ledgerTag: LedgerTag.CAR_DETAILING, isComboEligible: true },
-  { slug: 'interior-exterior-wash', name: 'Interior & Exterior Wash', kind: ServiceKind.WASH, durationMin: 60, priceCents: 3000, ledgerTag: LedgerTag.CAR_DETAILING, isComboEligible: true },
-  { slug: 'premium-valet', name: 'Premium Valeting', kind: ServiceKind.WASH, durationMin: 120, priceCents: 9500, ledgerTag: LedgerTag.CAR_DETAILING, isComboEligible: false },
+  // ── Barber · Haircuts ──
+  { slug: 'boy-haircut', name: "Boy's Haircut (0-5 yrs)", kind: B, durationMin: 25, priceCents: 1100, ledgerTag: HAIR, isComboEligible: false },
+  { slug: 'boy-scissors-haircut', name: "Boy's Scissors Haircut (0-5 yrs)", kind: B, durationMin: 30, priceCents: 1300, ledgerTag: HAIR, isComboEligible: false },
+  { slug: 'haircut', name: 'Haircut', kind: B, durationMin: 30, priceCents: 1200, ledgerTag: HAIR, isComboEligible: true },
+  { slug: 'skin-fade', name: 'Skin Fade Haircut', kind: B, durationMin: 40, priceCents: 1400, ledgerTag: HAIR, isComboEligible: true },
+  { slug: 'clipper-head-shave', name: 'Clipper Head Shave', kind: B, durationMin: 20, priceCents: 1000, ledgerTag: HAIR, isComboEligible: false },
+  { slug: 'clean-head-shave', name: 'Clean Head Shave', kind: B, durationMin: 30, priceCents: 1200, ledgerTag: HAIR, isComboEligible: true },
+  { slug: 'hot-towel-clean-head-shave', name: 'Hot Towel Clean Head Shave', kind: B, durationMin: 35, priceCents: 1200, ledgerTag: HAIR, isComboEligible: true },
+  { slug: 'premium-clean-head-shave', name: 'Premium Clean Head Shave', kind: B, durationMin: 35, priceCents: 1200, ledgerTag: HAIR, isComboEligible: true },
+  { slug: 'scissors-classic-haircut', name: 'Scissors Classic Haircut', kind: B, durationMin: 45, priceCents: 1600, ledgerTag: HAIR, isComboEligible: true },
+  { slug: 'long-scissors-haircut', name: 'Long Scissors Haircut', kind: B, durationMin: 45, priceCents: 1600, ledgerTag: HAIR, isComboEligible: true },
+  { slug: 'senior-haircut', name: '+65 Haircut', kind: B, durationMin: 40, priceCents: 1600, ledgerTag: HAIR, isComboEligible: true },
+  { slug: 'hairstyling', name: 'Hairstyling', kind: B, durationMin: 15, priceCents: 600, ledgerTag: HAIR, isComboEligible: false },
+  // ── Barber · Beard Grooming ──
+  { slug: 'beard-grooming', name: 'Beard Grooming', kind: B, durationMin: 20, priceCents: 800, ledgerTag: HAIR, isComboEligible: false },
+  { slug: 'beard-clean-shave', name: 'Beard Clean Shave', kind: B, durationMin: 20, priceCents: 800, ledgerTag: HAIR, isComboEligible: false },
+  { slug: 'hot-towel-beard-grooming', name: 'Hot Towel Beard Grooming', kind: B, durationMin: 25, priceCents: 1000, ledgerTag: HAIR, isComboEligible: false },
+  { slug: 'hot-towel-beard-clean-shave', name: 'Hot Towel Beard Clean Shave', kind: B, durationMin: 25, priceCents: 1000, ledgerTag: HAIR, isComboEligible: false },
+  { slug: 'premium-beard-clean-shave', name: 'Premium Beard Clean Shave', kind: B, durationMin: 25, priceCents: 1000, ledgerTag: HAIR, isComboEligible: false },
+  // ── Barber · Pampering ──
+  { slug: 'shampoo-wash', name: 'Shampoo Wash', kind: B, durationMin: 10, priceCents: 300, ledgerTag: HAIR, isComboEligible: false },
+  { slug: 'hair-scalp-treatment', name: 'Hair Scalp Treatment', kind: B, durationMin: 20, priceCents: 1000, ledgerTag: HAIR, isComboEligible: false },
+  { slug: 'nose-waxing', name: 'Nose Waxing', kind: B, durationMin: 10, priceCents: 400, ledgerTag: HAIR, isComboEligible: false },
+  { slug: 'ear-waxing', name: 'Ear Waxing', kind: B, durationMin: 10, priceCents: 400, ledgerTag: HAIR, isComboEligible: false },
+  { slug: 'eyebrows-shaping', name: 'Eyebrows Shaping', kind: B, durationMin: 10, priceCents: 500, ledgerTag: HAIR, isComboEligible: false },
+  { slug: 'complete-waxing-service', name: 'Complete Waxing Service', kind: B, durationMin: 25, priceCents: 1100, ledgerTag: HAIR, isComboEligible: false },
+  { slug: 'black-mask', name: 'Black Mask', kind: B, durationMin: 15, priceCents: 600, ledgerTag: HAIR, isComboEligible: false },
+  { slug: 'complete-pampering-service', name: 'Complete Pampering Service', kind: B, durationMin: 60, priceCents: 4000, ledgerTag: HAIR, isComboEligible: false },
+  // ── Car wash · size-priced washes (Small / Medium / Large-SUV) ──
+  { slug: 'interior-wash', name: 'Interior Wash (Small)', kind: W, durationMin: 40, priceCents: 1800, ledgerTag: WASH, isComboEligible: true },
+  { slug: 'interior-wash-medium', name: 'Interior Wash (Medium)', kind: W, durationMin: 40, priceCents: 2000, ledgerTag: WASH, isComboEligible: true },
+  { slug: 'interior-wash-large', name: 'Interior Wash (Large / SUV)', kind: W, durationMin: 40, priceCents: 2200, ledgerTag: WASH, isComboEligible: true },
+  { slug: 'exterior-wash', name: 'Exterior Wash (Small)', kind: W, durationMin: 30, priceCents: 1400, ledgerTag: WASH, isComboEligible: true },
+  { slug: 'exterior-wash-medium', name: 'Exterior Wash (Medium)', kind: W, durationMin: 30, priceCents: 1600, ledgerTag: WASH, isComboEligible: true },
+  { slug: 'exterior-wash-large', name: 'Exterior Wash (Large / SUV)', kind: W, durationMin: 30, priceCents: 2000, ledgerTag: WASH, isComboEligible: true },
+  { slug: 'interior-exterior-wash', name: 'Interior & Exterior Wash (Small)', kind: W, durationMin: 75, priceCents: 3000, ledgerTag: WASH, isComboEligible: true },
+  { slug: 'interior-exterior-wash-medium', name: 'Interior & Exterior Wash (Medium)', kind: W, durationMin: 75, priceCents: 3500, ledgerTag: WASH, isComboEligible: true },
+  { slug: 'interior-exterior-wash-large', name: 'Interior & Exterior Wash (Large / SUV)', kind: W, durationMin: 75, priceCents: 4000, ledgerTag: WASH, isComboEligible: true },
+  // ── Car wash · flat-price detailing ──
+  { slug: 'headlight-restoration', name: 'Headlight Restoration', kind: W, durationMin: 45, priceCents: 3000, ledgerTag: WASH, isComboEligible: false },
+  { slug: 'engine-bay-cleaning', name: 'Engine Bay Cleaning', kind: W, durationMin: 45, priceCents: 2000, ledgerTag: WASH, isComboEligible: false },
+  { slug: 'sio2-detailer-interior', name: 'SiO2 Detailer — Interior', kind: W, durationMin: 30, priceCents: 1500, ledgerTag: WASH, isComboEligible: false },
+  { slug: 'sio2-detailer-exterior', name: 'SiO2 Detailer — Exterior', kind: W, durationMin: 30, priceCents: 1500, ledgerTag: WASH, isComboEligible: false },
+  { slug: 'leather-detailer', name: 'Leather Detailer', kind: W, durationMin: 30, priceCents: 1500, ledgerTag: WASH, isComboEligible: false },
+  { slug: 'leather-treatment', name: 'Leather Treatment', kind: W, durationMin: 60, priceCents: 6000, ledgerTag: WASH, isComboEligible: false },
+  { slug: 'rims-wheelarches-detailing', name: 'Rims & Wheelarches Detailing', kind: W, durationMin: 90, priceCents: 12500, ledgerTag: WASH, isComboEligible: false },
+  { slug: 'rims-restoration', name: 'Rims Restoration (per rim)', kind: W, durationMin: 60, priceCents: 4500, ledgerTag: WASH, isComboEligible: false },
+  // ── Car wash · quoted on inspection ──
+  { slug: 'pet-hair-removal', name: 'Pet Hair Removal', kind: W, durationMin: 30, priceCents: 0, ledgerTag: WASH, isComboEligible: false, isQuoteOnly: true },
+  { slug: 'paint-correction', name: 'Paint Correction', kind: W, durationMin: 180, priceCents: 0, ledgerTag: WASH, isComboEligible: false, isQuoteOnly: true },
+  { slug: 'ceramic-coating', name: 'Ceramic Coating', kind: W, durationMin: 240, priceCents: 0, ledgerTag: WASH, isComboEligible: false, isQuoteOnly: true },
+  { slug: 'premium-valet', name: 'Premium Valeting', kind: W, durationMin: 120, priceCents: 0, ledgerTag: WASH, isComboEligible: false, isQuoteOnly: true },
 ];
+
+// Locations that physically run the car wash (have wash bays). Barber services are
+// offered at every branch; wash/detailing services only here.
+// TODO(confirm): the demo abstracted the wash to a single location + Fgura-only
+// combos. Real bays are at Naxxar (2) and Pama (1); Fgura has none. Confirm the
+// true car-wash location(s) and combo branch(es) and this list is the single knob.
+const WASH_SERVICE_LOCATION_SLUGS = new Set(['naxxar', 'pama']);
 
 interface ProductSeed {
   sku: string;
@@ -177,21 +240,51 @@ const main = async (): Promise<void> => {
     }
   }
 
-  const locations = await prisma.location.findMany({ select: { id: true } });
+  const locations = await prisma.location.findMany({ select: { id: true, slug: true } });
   for (const spec of SERVICES) {
+    const data = {
+      name: spec.name,
+      kind: spec.kind,
+      durationMin: spec.durationMin,
+      priceCents: spec.priceCents,
+      ledgerTag: spec.ledgerTag,
+      isComboEligible: spec.isComboEligible,
+      isQuoteOnly: spec.isQuoteOnly ?? false,
+      isActive: true,
+    };
     const service = await prisma.service.upsert({
       where: { slug: spec.slug },
-      update: { priceCents: spec.priceCents, durationMin: spec.durationMin },
-      create: { ...spec },
+      update: data,
+      create: { slug: spec.slug, ...data },
     });
-    for (const { id: locationId } of locations) {
+    // Barber services are offered everywhere; wash/detailing only at wash-capable branches.
+    const targets =
+      spec.kind === ServiceKind.WASH
+        ? locations.filter((l) => WASH_SERVICE_LOCATION_SLUGS.has(l.slug))
+        : locations;
+    for (const { id: locationId } of targets) {
       await prisma.locationService.upsert({
         where: { locationId_serviceId: { locationId, serviceId: service.id } },
-        update: {},
+        update: { isActive: true },
         create: { locationId, serviceId: service.id },
       });
     }
   }
+  // Retire any service no longer in the menu (idempotent re-seeds).
+  await prisma.service.updateMany({
+    where: { slug: { notIn: SERVICES.map((s) => s.slug) } },
+    data: { isActive: false },
+  });
+  // Prune wash-service availability from non-wash-capable locations (idempotent).
+  const washLocationIds = locations
+    .filter((l) => WASH_SERVICE_LOCATION_SLUGS.has(l.slug))
+    .map((l) => l.id);
+  const washServiceIds = (
+    await prisma.service.findMany({ where: { kind: ServiceKind.WASH }, select: { id: true } })
+  ).map((s) => s.id);
+  await prisma.locationService.deleteMany({
+    where: { serviceId: { in: washServiceIds }, locationId: { notIn: washLocationIds } },
+  });
 
   for (const spec of PRODUCTS) {
     const product = await prisma.product.upsert({

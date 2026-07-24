@@ -26,6 +26,7 @@ export class ServicesController {
         durationMin: service.durationMin,
         priceCents: service.priceCents,
         isComboEligible: service.isComboEligible,
+        isQuoteOnly: service.isQuoteOnly,
       }));
     } catch (error) {
       if (error instanceof HttpException) {

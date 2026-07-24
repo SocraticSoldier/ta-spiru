@@ -19,10 +19,17 @@ export const bootTestApp = async (): Promise<TestContext> => {
   return { app, prisma: app.get(PrismaService) };
 };
 
-/** A future date (YYYY-MM-DD) far enough out to avoid colliding with demo/seed data. */
+/**
+ * A future date (YYYY-MM-DD) far enough out to avoid colliding with demo/seed data.
+ * The roster runs Monday–Saturday, so Sundays are rolled forward to Monday to keep
+ * availability-based tests deterministic regardless of which weekday they run on.
+ */
 export const futureDate = (daysAhead: number): string => {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() + daysAhead);
+  if (date.getUTCDay() === 0) {
+    date.setUTCDate(date.getUTCDate() + 1); // Sunday -> Monday
+  }
   return date.toISOString().slice(0, 10);
 };
 

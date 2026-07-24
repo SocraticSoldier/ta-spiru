@@ -183,6 +183,8 @@ export interface ServiceSummary {
   durationMin: number;
   priceCents: number;
   isComboEligible: boolean;
+  /** Price is given on inspection (e.g. ceramic coating); priceCents is 0. */
+  isQuoteOnly: boolean;
 }
 
 export type LoyaltyTierName = 'BRONZE' | 'SILVER' | 'GOLD';

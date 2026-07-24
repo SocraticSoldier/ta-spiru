@@ -267,6 +267,7 @@ model Service {
   ledgerTag       LedgerTag
   isComboEligible Boolean     @default(false)
   isActive        Boolean     @default(true)
+  isQuoteOnly     Boolean     @default(false) // price given on inspection (e.g. ceramic coating)
 
   locations    LocationService[]
   appointments Appointment[]
