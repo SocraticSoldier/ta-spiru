@@ -19,10 +19,11 @@ interface BranchSeed {
 }
 
 const BRANCHES: readonly BranchSeed[] = [
-  { slug: 'naxxar', name: 'Naxxar', address: 'Flagship Barbershop & Detailing Hub, Naxxar', chairs: 4, bays: 2 },
-  { slug: 'pama', name: 'Pama', address: 'Pama Shopping Village, Mosta', chairs: 3, bays: 1 },
+  { slug: 'naxxar', name: 'Naxxar', address: 'Flagship Barbershop, Naxxar', chairs: 4, bays: 0 },
+  { slug: 'pama', name: 'Pama', address: 'Pama Shopping Village, Mosta', chairs: 3, bays: 0 },
   { slug: 'san-gwann', name: 'San Ġwann', address: 'San Ġwann', chairs: 3, bays: 0 },
-  { slug: 'fgura', name: 'Fgura', address: 'Fgura', chairs: 2, bays: 0 },
+  // Fgura: barbershop + the car wash / detailing centre next door on Zabbar Road.
+  { slug: 'fgura', name: 'Fgura', address: 'Barbershop & Car Wash, Zabbar Road, Fgura', chairs: 2, bays: 2 },
   { slug: 'san-giljan', name: "San Ġiljan – St George's Mall", address: "St George's Mall, San Ġiljan", chairs: 3, bays: 0 },
 ];
 
@@ -101,12 +102,10 @@ const SERVICES: readonly ServiceSeed[] = [
   { slug: 'premium-valet', name: 'Premium Valeting', kind: W, durationMin: 120, priceCents: 0, ledgerTag: WASH, isComboEligible: false, isQuoteOnly: true },
 ];
 
-// Locations that physically run the car wash (have wash bays). Barber services are
-// offered at every branch; wash/detailing services only here.
-// TODO(confirm): the demo abstracted the wash to a single location + Fgura-only
-// combos. Real bays are at Naxxar (2) and Pama (1); Fgura has none. Confirm the
-// true car-wash location(s) and combo branch(es) and this list is the single knob.
-const WASH_SERVICE_LOCATION_SLUGS = new Set(['naxxar', 'pama']);
+// The car wash / detailing centre is a single site on Zabbar Road, Fgura, next
+// door to the Fgura barbershop — so wash services and Combo Wash & Cut are
+// Fgura-only. Barber services are offered at every branch.
+const WASH_SERVICE_LOCATION_SLUGS = new Set(['fgura']);
 
 interface ProductSeed {
   sku: string;

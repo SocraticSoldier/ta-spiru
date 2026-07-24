@@ -8,7 +8,7 @@ describe('Booking engine (e2e)', () => {
   let prisma: PrismaService;
   let http: ReturnType<typeof request>;
 
-  let naxxarId: string;
+  let fguraId: string;
   let barberServiceId: string;
   let washServiceId: string;
   let adminToken: string;
@@ -23,8 +23,8 @@ describe('Booking engine (e2e)', () => {
     prisma = ctx.prisma;
     http = request(app.getHttpServer());
 
-    const naxxar = await prisma.location.findUniqueOrThrow({ where: { slug: 'naxxar' } });
-    naxxarId = naxxar.id;
+    const fgura = await prisma.location.findUniqueOrThrow({ where: { slug: 'fgura' } });
+    fguraId = fgura.id;
     barberServiceId = (await prisma.service.findUniqueOrThrow({ where: { slug: 'skin-fade' } })).id;
     washServiceId = (await prisma.service.findUniqueOrThrow({ where: { slug: 'exterior-wash' } })).id;
 
@@ -74,7 +74,7 @@ describe('Booking engine (e2e)', () => {
   it('finds combo slots, then excludes a blocked window', async () => {
     const before = await http
       .get('/api/v1/bookings/combo-availability')
-      .query({ locationId: naxxarId, date, barberServiceId, washServiceId })
+      .query({ locationId: fguraId, date, barberServiceId, washServiceId })
       .expect(200);
     expect(before.body.length).toBeGreaterThan(0);
 
@@ -83,7 +83,7 @@ describe('Booking engine (e2e)', () => {
       .post('/api/v1/time-blocks')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        locationId: naxxarId,
+        locationId: fguraId,
         startsAt: `${date}T09:00:00.000Z`,
         endsAt: `${date}T13:00:00.000Z`,
         reason: 'e2e block',
@@ -93,7 +93,7 @@ describe('Booking engine (e2e)', () => {
 
     const after = await http
       .get('/api/v1/bookings/combo-availability')
-      .query({ locationId: naxxarId, date, barberServiceId, washServiceId })
+      .query({ locationId: fguraId, date, barberServiceId, washServiceId })
       .expect(200);
 
     expect(after.body.length).toBeLessThan(before.body.length);
@@ -106,7 +106,7 @@ describe('Booking engine (e2e)', () => {
   it('books a combo and rejects a second booking of the same barber+slot', async () => {
     const slots = await http
       .get('/api/v1/bookings/combo-availability')
-      .query({ locationId: naxxarId, date, barberServiceId, washServiceId })
+      .query({ locationId: fguraId, date, barberServiceId, washServiceId })
       .expect(200);
     const slot = slots.body[0];
     expect(slot).toBeDefined();
@@ -115,7 +115,7 @@ describe('Booking engine (e2e)', () => {
       .post('/api/v1/bookings/combo')
       .set('Authorization', `Bearer ${customerToken}`)
       .send({
-        locationId: naxxarId,
+        locationId: fguraId,
         startsAt: slot.startsAt,
         barberServiceId,
         washServiceId,
@@ -133,7 +133,7 @@ describe('Booking engine (e2e)', () => {
       .post('/api/v1/bookings/combo')
       .set('Authorization', `Bearer ${customerToken}`)
       .send({
-        locationId: naxxarId,
+        locationId: fguraId,
         startsAt: slot.startsAt,
         barberServiceId,
         washServiceId,
@@ -164,7 +164,7 @@ describe('Booking engine (e2e)', () => {
     await http
       .post('/api/v1/time-blocks')
       .set('Authorization', `Bearer ${customerToken}`)
-      .send({ locationId: naxxarId, startsAt: `${date}T15:00:00.000Z`, endsAt: `${date}T16:00:00.000Z` })
+      .send({ locationId: fguraId, startsAt: `${date}T15:00:00.000Z`, endsAt: `${date}T16:00:00.000Z` })
       .expect(403);
   });
 
@@ -172,7 +172,7 @@ describe('Booking engine (e2e)', () => {
     await http.post('/api/v1/bookings/combo').send({}).expect(401);
     await http
       .get('/api/v1/bookings/availability')
-      .query({ locationId: naxxarId, date, serviceId: barberServiceId })
+      .query({ locationId: fguraId, date, serviceId: barberServiceId })
       .expect(200);
   });
 });
