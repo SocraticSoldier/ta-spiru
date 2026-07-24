@@ -207,6 +207,24 @@ export interface BarberSummary {
   photoUrl: string | null;
 }
 
+export type WaitingListStatusName = 'WAITING' | 'OFFERED' | 'BOOKED' | 'CANCELLED';
+
+/** A customer waiting for a fully-booked barber on a given day. */
+export interface WaitingListRow {
+  id: string;
+  locationId: string;
+  customerName: string;
+  customerPhone: string | null;
+  barberId: string | null;
+  barberName: string | null;
+  serviceId: string;
+  serviceName: string;
+  forDate: string;
+  status: WaitingListStatusName;
+  notes: string | null;
+  createdAt: string;
+}
+
 /**
  * A client visit on the barber's own kiosk. By policy the barber sees ONLY the
  * client's name and the requested services — no contact details, notes or price.

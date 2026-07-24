@@ -143,6 +143,7 @@ model Location {
   timeBlocks        TimeBlock[]
   appointments      Appointment[]
   queueEntries      QueueEntry[]
+  waitingList       WaitingListEntry[]
   stockLevels       StockLevel[]
   stockMovements    StockMovement[]
   orders            Order[]
@@ -194,6 +195,8 @@ model User {
   timeBlocks           TimeBlock[]     @relation("TimeBlockBarber")
   createdTimeBlocks    TimeBlock[]     @relation("TimeBlockCreator")
   serviceOverrides     TeamMemberService[]
+  waitingListEntries   WaitingListEntry[] @relation("WaitingListCustomer")
+  waitingListRequests  WaitingListEntry[] @relation("WaitingListBarber")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -288,9 +291,40 @@ model Service {
   queueEntries    QueueEntry[]
   tiers           ServiceTier[]
   memberOverrides TeamMemberService[]
+  waitingList     WaitingListEntry[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+enum WaitingListStatus {
+  WAITING
+  OFFERED // reception has offered a freed slot
+  BOOKED // converted into an appointment
+  CANCELLED
+}
+
+// A customer who wants a fully-booked barber on a given day. Reception works
+// this list when a slot frees up; customers join it from the booking screen.
+model WaitingListEntry {
+  id         String            @id @default(cuid())
+  locationId String
+  location   Location          @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  customerId String
+  customer   User              @relation("WaitingListCustomer", fields: [customerId], references: [id], onDelete: Cascade)
+  barberId   String? // null = happy with any barber
+  barber     User?             @relation("WaitingListBarber", fields: [barberId], references: [id])
+  serviceId  String
+  service    Service           @relation(fields: [serviceId], references: [id])
+  forDate    DateTime // the day the customer wants (date-only, UTC midnight)
+  status     WaitingListStatus @default(WAITING)
+  notes      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([locationId, forDate, status])
+  @@index([barberId, forDate, status])
 }
 
 // Per-seniority price/duration for a barber service (Junior / Normal / Senior).

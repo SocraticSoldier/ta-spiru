@@ -16,6 +16,7 @@ import { ReportsModule } from './reports/reports.module';
 import { ServicesModule } from './services/services.module';
 import { TimeBlocksModule } from './time-blocks/time-blocks.module';
 import { TimeclockModule } from './timeclock/timeclock.module';
+import { WaitingListModule } from './waiting-list/waiting-list.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { TimeclockModule } from './timeclock/timeclock.module';
     LoyaltyModule,
     ServicesModule,
     TimeBlocksModule,
+    WaitingListModule,
   ],
 })
 export class AppModule {}
