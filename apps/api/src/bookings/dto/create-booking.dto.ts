@@ -22,6 +22,14 @@ export class CreateBookingDto {
   @IsString()
   washBayId?: string;
 
+  /**
+   * Staff only: book on behalf of this customer (reception manual bookings and
+   * kiosk walk-ins). Ignored for customers booking for themselves.
+   */
+  @IsOptional()
+  @IsString()
+  customerId?: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(16)

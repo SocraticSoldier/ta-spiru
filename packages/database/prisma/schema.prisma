@@ -47,6 +47,14 @@ enum AppointmentStatus {
   COMPLETED
   CANCELLED
   NO_SHOW
+  LATE // client is running late — kept on the schedule, flagged on the kiosk
+}
+
+// Where a booking was created. Feeds the admin bookings audit.
+enum BookingSource {
+  ONLINE
+  RECEPTION
+  WALK_IN
 }
 
 enum QueueStatus {
@@ -197,6 +205,7 @@ model User {
   serviceOverrides     TeamMemberService[]
   waitingListEntries   WaitingListEntry[] @relation("WaitingListCustomer")
   waitingListRequests  WaitingListEntry[] @relation("WaitingListBarber")
+  serviceChanges       ServiceChangeLog[] @relation("ServiceChangeActor")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -449,9 +458,12 @@ model Appointment {
   transaction   Transaction? @relation(fields: [transactionId], references: [id])
 
   priceCentsSnapshot Int? // price charged at booking, after barber seniority/overrides
+  source             BookingSource @default(ONLINE) // audit: where it was booked from
 
   vehicleReg String? // wash segments
   notes      String?
+
+  serviceChanges ServiceChangeLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -460,6 +472,27 @@ model Appointment {
   @@index([barberId, startsAt])
   @@index([resourceId, startsAt])
   @@index([comboGroupId])
+}
+
+// A barber changed the services of a live appointment (added a beard mid-cut,
+// swapped a service, …). Every entry notifies the admin dashboard — both the
+// anti-theft angle and the positive upsell report read from this log.
+model ServiceChangeLog {
+  id            String      @id @default(cuid())
+  appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  changedById   String
+  changedBy     User        @relation("ServiceChangeActor", fields: [changedById], references: [id])
+  action        String // ADDED | REMOVED
+  serviceName   String
+  priceCents    Int // price delta the change introduced
+  minutes       Int // duration delta
+  overlapAccepted Boolean @default(false) // barber accepted the responsibility pop-up
+  acknowledged  Boolean  @default(false) // admin has seen it
+  createdAt     DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([acknowledged])
 }
 
 // Live walk-in queue; ordering is joinedAt within WAITING status.

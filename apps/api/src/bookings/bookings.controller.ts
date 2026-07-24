@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { Role } from '@ta-spiru/database';
+import { AddServiceDto, UpdateAppointmentStatusDto } from './dto/kiosk.dtos';
 import { AppointmentRow, AvailabilitySlot, ComboSlot, MyBookingRow } from '@ta-spiru/shared';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -39,7 +40,31 @@ export class BookingsController {
     @Body() dto: CreateBookingDto,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<AppointmentRow> {
-    return this.bookingsService.createBooking(dto, user.id);
+    return this.bookingsService.createBooking(dto, user.id, user.role);
+  }
+
+  /** Kiosk/reception: set the client status (being served, no-show, late, …). */
+  @Patch(':appointmentId/status')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.MANAGER, Role.RECEPTIONIST, Role.BARBER, Role.WASH_ATTENDANT)
+  setStatus(
+    @Param('appointmentId') appointmentId: string,
+    @Body() dto: UpdateAppointmentStatusDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<{ id: string; status: string }> {
+    return this.bookingsService.setStatus(appointmentId, dto.status, user);
+  }
+
+  /** Barber kiosk: add a service to the client in the chair. */
+  @Post(':appointmentId/add-service')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.BARBER)
+  addService(
+    @Param('appointmentId') appointmentId: string,
+    @Body() dto: AddServiceDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<{ visitGroupId: string; addedAppointmentId: string; endsAt: string; overlapAccepted: boolean }> {
+    return this.bookingsService.addServiceMidAppointment(appointmentId, dto, user.id);
   }
 
   @Post('combo')

@@ -10,6 +10,7 @@ import {
 import {
   Appointment,
   AppointmentStatus,
+  BookingSource,
   Prisma,
   ResourceKind,
   Role,
@@ -539,8 +540,21 @@ export class BookingsService {
   }
 
   /** Books a single (non-combo) barber or wash appointment with a serializable conflict re-check. */
-  async createBooking(dto: CreateBookingDto, customerId: string): Promise<AppointmentRow> {
+  async createBooking(
+    dto: CreateBookingDto,
+    actorId: string,
+    actorRole: Role = Role.CUSTOMER,
+  ): Promise<AppointmentRow> {
     try {
+      // Staff book on behalf of a customer; the origin is stamped for the audit.
+      const isStaff = actorRole !== Role.CUSTOMER;
+      const customerId = isStaff && dto.customerId ? dto.customerId : actorId;
+      const source =
+        actorRole === Role.BARBER || actorRole === Role.WASH_ATTENDANT
+          ? BookingSource.WALK_IN
+          : isStaff
+            ? BookingSource.RECEPTION
+            : BookingSource.ONLINE;
       const service = await this.prisma.service.findFirst({
         where: { id: dto.serviceId, isActive: true },
       });
@@ -629,6 +643,7 @@ export class BookingsService {
               endsAt,
               lockedUntil: endsAt,
               priceCentsSnapshot: priceCents,
+              source,
               vehicleReg: dto.vehicleReg ?? null,
               notes: dto.notes ?? null,
             },
@@ -815,6 +830,164 @@ export class BookingsService {
       open: zonedTimeToUtc(date, hours.opensAt, location.timezone),
       close: zonedTimeToUtc(date, hours.closesAt, location.timezone),
     };
+  }
+
+  /**
+   * Kiosk/reception status change: being served, checked in, no-show, late, …
+   * Staff can set any appointment at their branch; a barber only their own.
+   */
+  async setStatus(
+    appointmentId: string,
+    status: AppointmentStatus,
+    actor: { id: string; role: Role },
+  ): Promise<{ id: string; status: AppointmentStatus }> {
+    try {
+      const allowed: AppointmentStatus[] = [
+        AppointmentStatus.CONFIRMED,
+        AppointmentStatus.CHECKED_IN,
+        AppointmentStatus.IN_PROGRESS,
+        AppointmentStatus.COMPLETED,
+        AppointmentStatus.NO_SHOW,
+        AppointmentStatus.LATE,
+      ];
+      if (!allowed.includes(status)) {
+        throw new BadRequestException(`Status ${status} cannot be set from the kiosk`);
+      }
+      const appointment = await this.prisma.appointment.findUnique({
+        where: { id: appointmentId },
+        select: { id: true, barberId: true },
+      });
+      if (!appointment) {
+        throw new NotFoundException(`Booking ${appointmentId} not found`);
+      }
+      if (actor.role === Role.BARBER && appointment.barberId !== actor.id) {
+        throw new NotFoundException(`Booking ${appointmentId} not found`);
+      }
+      const updated = await this.prisma.appointment.update({
+        where: { id: appointmentId },
+        data: { status },
+        select: { id: true, status: true },
+      });
+      return updated;
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to update the booking status');
+    }
+  }
+
+  /**
+   * A barber adds a service to a client already in the chair. The extra service
+   * becomes a linked appointment in the same visit (shared comboGroupId) starting
+   * where the current one ends, priced for this barber, and every change is
+   * logged for the admin dashboard. If the added time runs into the barber's
+   * next booking, the first attempt is refused with OVERLAP_CONFIRM_REQUIRED —
+   * retrying with acceptOverlap=true is the barber accepting responsibility.
+   */
+  async addServiceMidAppointment(
+    appointmentId: string,
+    dto: { serviceId: string; acceptOverlap?: boolean },
+    barberId: string,
+  ): Promise<{ visitGroupId: string; addedAppointmentId: string; endsAt: string; overlapAccepted: boolean }> {
+    try {
+      const appointment = await this.prisma.appointment.findFirst({
+        where: {
+          id: appointmentId,
+          barberId,
+          status: { in: [AppointmentStatus.CHECKED_IN, AppointmentStatus.IN_PROGRESS, AppointmentStatus.CONFIRMED] },
+        },
+      });
+      if (!appointment) {
+        throw new NotFoundException(`Booking ${appointmentId} not found for this barber`);
+      }
+      const service = await this.prisma.service.findFirst({
+        where: { id: dto.serviceId, kind: ServiceKind.BARBER, isActive: true },
+      });
+      if (!service) {
+        throw new BadRequestException('Service not found or not a barber service');
+      }
+      const pricing = await this.resolveBarberPricing(service, barberId);
+
+      // The visit currently ends where its last linked segment ends.
+      const visitGroupId = appointment.comboGroupId ?? randomUUID();
+      const visitEnd = appointment.comboGroupId
+        ? (
+            await this.prisma.appointment.aggregate({
+              where: { comboGroupId: visitGroupId, barberId },
+              _max: { endsAt: true },
+            })
+          )._max.endsAt ?? appointment.endsAt
+        : appointment.endsAt;
+      const addedEnd = addMinutes(visitEnd, pricing.durationMin);
+
+      // Does the extra time eat into the barber's next active booking?
+      const nextBooking = await this.prisma.appointment.findFirst({
+        where: {
+          barberId,
+          status: { in: [...ACTIVE_STATUSES] },
+          startsAt: { gte: visitEnd, lt: addedEnd },
+          // NB: a plain NOT{comboGroupId} would skip NULL rows (SQL null semantics)
+          OR: [{ comboGroupId: null }, { comboGroupId: { not: visitGroupId } }],
+          id: { not: appointment.id },
+        },
+        orderBy: { startsAt: 'asc' },
+        select: { startsAt: true },
+      });
+      if (nextBooking && !dto.acceptOverlap) {
+        throw new ConflictException({
+          code: 'OVERLAP_CONFIRM_REQUIRED',
+          message:
+            'Adding this service runs into your next booking. Accepting it makes keeping the next client on time your responsibility.',
+          nextBookingAt: nextBooking.startsAt.toISOString(),
+        });
+      }
+
+      const [added] = await this.prisma.$transaction([
+        this.prisma.appointment.create({
+          data: {
+            locationId: appointment.locationId,
+            customerId: appointment.customerId,
+            serviceId: service.id,
+            barberId,
+            startsAt: visitEnd,
+            endsAt: addedEnd,
+            lockedUntil: addedEnd,
+            status: appointment.status,
+            priceCentsSnapshot: pricing.priceCents,
+            source: BookingSource.WALK_IN,
+            comboGroupId: visitGroupId,
+          },
+          select: { id: true, endsAt: true },
+        }),
+        this.prisma.appointment.update({
+          where: { id: appointment.id },
+          data: { comboGroupId: visitGroupId },
+        }),
+        this.prisma.serviceChangeLog.create({
+          data: {
+            appointmentId: appointment.id,
+            changedById: barberId,
+            action: 'ADDED',
+            serviceName: service.name,
+            priceCents: pricing.priceCents,
+            minutes: pricing.durationMin,
+            overlapAccepted: Boolean(nextBooking && dto.acceptOverlap),
+          },
+        }),
+      ]);
+      return {
+        visitGroupId,
+        addedAppointmentId: added.id,
+        endsAt: added.endsAt.toISOString(),
+        overlapAccepted: Boolean(nextBooking && dto.acceptOverlap),
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to add the service');
+    }
   }
 
   private pickService(services: readonly Service[], serviceId: string, kind: ServiceKind): Service {

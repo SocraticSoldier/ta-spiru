@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { BarbersModule } from './barbers/barbers.module';
 import { BookingsModule } from './bookings/bookings.module';
@@ -41,6 +42,7 @@ import { WaitingListModule } from './waiting-list/waiting-list.module';
     ServicesModule,
     TimeBlocksModule,
     WaitingListModule,
+    AuditModule,
   ],
 })
 export class AppModule {}
