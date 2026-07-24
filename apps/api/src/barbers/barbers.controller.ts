@@ -1,14 +1,18 @@
 import {
+  Body,
   Controller,
+  Delete,
   Get,
   HttpException,
   InternalServerErrorException,
   NotFoundException,
   Param,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
 import { Role, ServiceKind } from '@ta-spiru/database';
+import { UpsertBarberServiceDto } from '../services/dto/services-admin.dtos';
 import {
   resolveServicePricing,
   type BarberScheduleRow,
@@ -113,6 +117,63 @@ export class BarbersController {
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException('Failed to list barbers');
+    }
+  }
+
+  /** Set a barber's override for a service: enable/disable, price, duration, daily cap. */
+  @Put(':barberId/services/:serviceId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.MANAGER)
+  async upsertOverride(
+    @Param('barberId') barberId: string,
+    @Param('serviceId') serviceId: string,
+    @Body() dto: UpsertBarberServiceDto,
+  ): Promise<{ ok: true }> {
+    try {
+      const [barber, service] = await Promise.all([
+        this.prisma.user.findFirst({ where: { id: barberId, role: Role.BARBER }, select: { id: true } }),
+        this.prisma.service.findUnique({ where: { id: serviceId }, select: { id: true } }),
+      ]);
+      if (!barber) throw new NotFoundException('Barber not found');
+      if (!service) throw new NotFoundException('Service not found');
+      await this.prisma.teamMemberService.upsert({
+        where: { userId_serviceId: { userId: barberId, serviceId } },
+        update: {
+          ...(dto.isEnabled !== undefined ? { isEnabled: dto.isEnabled } : {}),
+          ...(dto.priceCents !== undefined ? { priceCents: dto.priceCents } : {}),
+          ...(dto.durationMin !== undefined ? { durationMin: dto.durationMin } : {}),
+          ...(dto.maxDaily !== undefined ? { maxDaily: dto.maxDaily } : {}),
+        },
+        create: {
+          userId: barberId,
+          serviceId,
+          isEnabled: dto.isEnabled ?? true,
+          priceCents: dto.priceCents ?? null,
+          durationMin: dto.durationMin ?? null,
+          maxDaily: dto.maxDaily ?? null,
+        },
+      });
+      return { ok: true };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException('Failed to save barber service override');
+    }
+  }
+
+  /** Clear a barber's override for a service (reverts to the seniority tier). */
+  @Delete(':barberId/services/:serviceId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.MANAGER)
+  async removeOverride(
+    @Param('barberId') barberId: string,
+    @Param('serviceId') serviceId: string,
+  ): Promise<{ ok: true }> {
+    try {
+      await this.prisma.teamMemberService.deleteMany({ where: { userId: barberId, serviceId } });
+      return { ok: true };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException('Failed to remove barber service override');
     }
   }
 
