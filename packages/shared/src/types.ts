@@ -175,6 +175,14 @@ export interface AppointmentRow {
   comboGroupId: string | null;
 }
 
+export type SeniorityName = 'JUNIOR' | 'NORMAL' | 'SENIOR';
+
+export interface ServiceTierSummary {
+  seniority: SeniorityName;
+  priceCents: number;
+  durationMin: number;
+}
+
 export interface ServiceSummary {
   id: string;
   slug: string;
@@ -185,6 +193,30 @@ export interface ServiceSummary {
   isComboEligible: boolean;
   /** Price is given on inspection (e.g. ceramic coating); priceCents is 0. */
   isQuoteOnly: boolean;
+  /** Junior/Normal/Senior price bands for barber haircuts (empty otherwise). */
+  tiers: ServiceTierSummary[];
+}
+
+/** A barber for the customer-facing booking screen. */
+export interface BarberSummary {
+  id: string;
+  firstName: string;
+  lastName: string;
+  seniority: SeniorityName | null;
+  stationNo: number | null;
+  photoUrl: string | null;
+}
+
+/** A service as offered by a specific barber, with price/duration resolved. */
+export interface BarberServiceSummary {
+  serviceId: string;
+  slug: string;
+  name: string;
+  kind: ServiceKindName;
+  priceCents: number;
+  durationMin: number;
+  maxDaily: number | null;
+  isComboEligible: boolean;
 }
 
 export type LoyaltyTierName = 'BRONZE' | 'SILVER' | 'GOLD';

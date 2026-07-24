@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
+import { BarbersModule } from './barbers/barbers.module';
 import { BookingsModule } from './bookings/bookings.module';
 import { validateEnv } from './config/env.validation';
 import { InventoryModule } from './inventory/inventory.module';
@@ -27,6 +28,7 @@ import { TimeclockModule } from './timeclock/timeclock.module';
     RedisModule,
     AuthModule,
     LocationsModule,
+    BarbersModule,
     BookingsModule,
     PaymentsModule,
     ReportsModule,

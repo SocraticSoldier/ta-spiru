@@ -16,8 +16,10 @@ export class ServicesController {
         kind === ServiceKind.BARBER || kind === ServiceKind.WASH ? (kind as ServiceKind) : undefined;
       const services = await this.prisma.service.findMany({
         where: { isActive: true, ...(kindFilter ? { kind: kindFilter } : {}) },
-        orderBy: [{ kind: 'asc' }, { priceCents: 'asc' }],
+        orderBy: [{ kind: 'asc' }, { sortOrder: 'asc' }, { priceCents: 'asc' }],
+        include: { tiers: true },
       });
+      const order = { JUNIOR: 0, NORMAL: 1, SENIOR: 2 } as const;
       return services.map((service) => ({
         id: service.id,
         slug: service.slug,
@@ -27,6 +29,10 @@ export class ServicesController {
         priceCents: service.priceCents,
         isComboEligible: service.isComboEligible,
         isQuoteOnly: service.isQuoteOnly,
+        tiers: service.tiers
+          .slice()
+          .sort((a, b) => order[a.seniority] - order[b.seniority])
+          .map((t) => ({ seniority: t.seniority, priceCents: t.priceCents, durationMin: t.durationMin })),
       }));
     } catch (error) {
       if (error instanceof HttpException) {

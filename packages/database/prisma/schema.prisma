@@ -27,6 +27,13 @@ enum ServiceKind {
   WASH
 }
 
+// Barber experience band. Drives which service price/duration tier applies.
+enum Seniority {
+  JUNIOR
+  NORMAL
+  SENIOR
+}
+
 enum ResourceKind {
   BARBER_CHAIR
   WASH_BAY
@@ -171,6 +178,10 @@ model User {
   location     Location? @relation(fields: [locationId], references: [id])
   isActive     Boolean   @default(true)
 
+  seniority Seniority? // barbers only — selects the service price/duration tier
+  stationNo Int? // barber chair / station number (shown to customers too)
+  photoUrl  String? // profile photo, shown on the customer booking screen
+
   shifts               Shift[]
   timeEntries          TimeEntry[]
   barberAppointments   Appointment[]   @relation("AppointmentBarber")
@@ -182,6 +193,7 @@ model User {
   loyaltyAccount       LoyaltyAccount?
   timeBlocks           TimeBlock[]     @relation("TimeBlockBarber")
   createdTimeBlocks    TimeBlock[]     @relation("TimeBlockCreator")
+  serviceOverrides     TeamMemberService[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -261,20 +273,53 @@ model Service {
   slug            String      @unique
   name            String
   description     String?
+  photoUrl        String? // shown in the service pop-up on the booking screen
   kind            ServiceKind
-  durationMin     Int
-  priceCents      Int
+  durationMin     Int // default duration; barber tiers/overrides may change it
+  priceCents      Int // default (NORMAL) price; barber tiers/overrides may change it
   ledgerTag       LedgerTag
+  sortOrder       Int         @default(0) // display order in the app
   isComboEligible Boolean     @default(false)
   isActive        Boolean     @default(true)
   isQuoteOnly     Boolean     @default(false) // price given on inspection (e.g. ceramic coating)
 
-  locations    LocationService[]
-  appointments Appointment[]
-  queueEntries QueueEntry[]
+  locations       LocationService[]
+  appointments    Appointment[]
+  queueEntries    QueueEntry[]
+  tiers           ServiceTier[]
+  memberOverrides TeamMemberService[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// Per-seniority price/duration for a barber service (Junior / Normal / Senior).
+model ServiceTier {
+  serviceId   String
+  service     Service   @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  seniority   Seniority
+  priceCents  Int
+  durationMin Int
+  serviceNo   String? // distinct service number per variation
+
+  @@id([serviceId, seniority])
+}
+
+// A specific barber's configuration of a service: enable/disable, price &
+// duration overrides, and a daily cap. Mirrors the team-member services grid
+// (ENABLED / PRICE / DURATION / MAX DAILY) from the existing system.
+model TeamMemberService {
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serviceId   String
+  service     Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  isEnabled   Boolean  @default(true)
+  priceCents  Int? // override; falls back to the seniority tier, then service default
+  durationMin Int? // override; falls back to the seniority tier, then service default
+  maxDaily    Int? // once reached, this barber takes no more of this service that day
+
+  @@id([userId, serviceId])
+  @@index([serviceId])
 }
 
 model LocationService {

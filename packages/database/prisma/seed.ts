@@ -5,6 +5,7 @@ import {
   ProductCategory,
   ResourceKind,
   Role,
+  Seniority,
   ServiceKind,
 } from '@prisma/client';
 
@@ -36,6 +37,7 @@ interface ServiceSeed {
   ledgerTag: LedgerTag;
   isComboEligible: boolean;
   isQuoteOnly?: boolean;
+  tiered?: boolean; // barber haircuts: create Junior/Normal/Senior price tiers
 }
 
 // Real Ta' Spiru menus. Barber = Haircuts + Beard Grooming + Pampering (all BARBER).
@@ -49,18 +51,18 @@ const W = ServiceKind.WASH;
 
 const SERVICES: readonly ServiceSeed[] = [
   // ── Barber · Haircuts ──
-  { slug: 'boy-haircut', name: "Boy's Haircut (0-5 yrs)", kind: B, durationMin: 25, priceCents: 1100, ledgerTag: HAIR, isComboEligible: false },
-  { slug: 'boy-scissors-haircut', name: "Boy's Scissors Haircut (0-5 yrs)", kind: B, durationMin: 30, priceCents: 1300, ledgerTag: HAIR, isComboEligible: false },
-  { slug: 'haircut', name: 'Haircut', kind: B, durationMin: 30, priceCents: 1200, ledgerTag: HAIR, isComboEligible: true },
-  { slug: 'skin-fade', name: 'Skin Fade Haircut', kind: B, durationMin: 40, priceCents: 1400, ledgerTag: HAIR, isComboEligible: true },
-  { slug: 'clipper-head-shave', name: 'Clipper Head Shave', kind: B, durationMin: 20, priceCents: 1000, ledgerTag: HAIR, isComboEligible: false },
-  { slug: 'clean-head-shave', name: 'Clean Head Shave', kind: B, durationMin: 30, priceCents: 1200, ledgerTag: HAIR, isComboEligible: true },
-  { slug: 'hot-towel-clean-head-shave', name: 'Hot Towel Clean Head Shave', kind: B, durationMin: 35, priceCents: 1200, ledgerTag: HAIR, isComboEligible: true },
-  { slug: 'premium-clean-head-shave', name: 'Premium Clean Head Shave', kind: B, durationMin: 35, priceCents: 1200, ledgerTag: HAIR, isComboEligible: true },
-  { slug: 'scissors-classic-haircut', name: 'Scissors Classic Haircut', kind: B, durationMin: 45, priceCents: 1600, ledgerTag: HAIR, isComboEligible: true },
-  { slug: 'long-scissors-haircut', name: 'Long Scissors Haircut', kind: B, durationMin: 45, priceCents: 1600, ledgerTag: HAIR, isComboEligible: true },
-  { slug: 'senior-haircut', name: '+65 Haircut', kind: B, durationMin: 40, priceCents: 1600, ledgerTag: HAIR, isComboEligible: true },
-  { slug: 'hairstyling', name: 'Hairstyling', kind: B, durationMin: 15, priceCents: 600, ledgerTag: HAIR, isComboEligible: false },
+  { tiered: true, slug: 'boy-haircut', name: "Boy's Haircut (0-5 yrs)", kind: B, durationMin: 25, priceCents: 1100, ledgerTag: HAIR, isComboEligible: false },
+  { tiered: true, slug: 'boy-scissors-haircut', name: "Boy's Scissors Haircut (0-5 yrs)", kind: B, durationMin: 30, priceCents: 1300, ledgerTag: HAIR, isComboEligible: false },
+  { tiered: true, slug: 'haircut', name: 'Haircut', kind: B, durationMin: 30, priceCents: 1200, ledgerTag: HAIR, isComboEligible: true },
+  { tiered: true, slug: 'skin-fade', name: 'Skin Fade Haircut', kind: B, durationMin: 40, priceCents: 1400, ledgerTag: HAIR, isComboEligible: true },
+  { tiered: true, slug: 'clipper-head-shave', name: 'Clipper Head Shave', kind: B, durationMin: 20, priceCents: 1000, ledgerTag: HAIR, isComboEligible: false },
+  { tiered: true, slug: 'clean-head-shave', name: 'Clean Head Shave', kind: B, durationMin: 30, priceCents: 1200, ledgerTag: HAIR, isComboEligible: true },
+  { tiered: true, slug: 'hot-towel-clean-head-shave', name: 'Hot Towel Clean Head Shave', kind: B, durationMin: 35, priceCents: 1200, ledgerTag: HAIR, isComboEligible: true },
+  { tiered: true, slug: 'premium-clean-head-shave', name: 'Premium Clean Head Shave', kind: B, durationMin: 35, priceCents: 1200, ledgerTag: HAIR, isComboEligible: true },
+  { tiered: true, slug: 'scissors-classic-haircut', name: 'Scissors Classic Haircut', kind: B, durationMin: 45, priceCents: 1600, ledgerTag: HAIR, isComboEligible: true },
+  { tiered: true, slug: 'long-scissors-haircut', name: 'Long Scissors Haircut', kind: B, durationMin: 45, priceCents: 1600, ledgerTag: HAIR, isComboEligible: true },
+  { tiered: true, slug: 'senior-haircut', name: '+65 Haircut', kind: B, durationMin: 40, priceCents: 1600, ledgerTag: HAIR, isComboEligible: true },
+  { tiered: true, slug: 'hairstyling', name: 'Hairstyling', kind: B, durationMin: 15, priceCents: 600, ledgerTag: HAIR, isComboEligible: false },
   // ── Barber · Beard Grooming ──
   { slug: 'beard-grooming', name: 'Beard Grooming', kind: B, durationMin: 20, priceCents: 800, ledgerTag: HAIR, isComboEligible: false },
   { slug: 'beard-clean-shave', name: 'Beard Clean Shave', kind: B, durationMin: 20, priceCents: 800, ledgerTag: HAIR, isComboEligible: false },
@@ -160,6 +162,19 @@ const BARBER_STAFF: readonly OrgSeed[] = Object.entries(BARBERS_BY_BRANCH).flatM
     })),
 );
 
+// Seniority + station (chair) number per barber. Seniority defaults to NORMAL —
+// Norbert sets each barber's real band in the team dashboard; station is the
+// chair order within the branch.
+const BARBER_META = new Map<string, { seniority: Seniority; stationNo: number }>();
+Object.values(BARBERS_BY_BRANCH).forEach((names) => {
+  names.forEach((firstName, i) => {
+    BARBER_META.set(`${firstName.toLowerCase()}@taspiru.com`, {
+      seniority: Seniority.NORMAL,
+      stationNo: i + 1,
+    });
+  });
+});
+
 const CORE_STAFF: readonly OrgSeed[] = [
   // Admin profiles
   { email: 'norbert@taspiru.com', firstName: 'Norbert', lastName: 'Ta Spiru', role: Role.ADMIN, branchSlug: null }, // Owner — barber & car wash
@@ -171,10 +186,10 @@ const CORE_STAFF: readonly OrgSeed[] = [
   { email: 'clarice@taspiru.com', firstName: 'Clarice', lastName: 'Reception', role: Role.RECEPTIONIST, branchSlug: 'fgura' },
   { email: 'romina@taspiru.com', firstName: 'Romina', lastName: 'Reception', role: Role.RECEPTIONIST, branchSlug: 'naxxar' },
 
-  // Car wash crew
-  { email: 'martin@taspiru.com', firstName: 'Martin', lastName: 'Supervisor', role: Role.WASH_ATTENDANT, branchSlug: 'naxxar' }, // Supervisor
-  { email: 'jerry@taspiru.com', firstName: 'Jerry', lastName: 'Attendant', role: Role.WASH_ATTENDANT, branchSlug: 'naxxar' },
-  { email: 'kelvin@taspiru.com', firstName: 'Kelvin', lastName: 'Attendant', role: Role.WASH_ATTENDANT, branchSlug: 'pama' },
+  // Car wash crew — the wash is the single Fgura (Zabbar Road) site
+  { email: 'martin@taspiru.com', firstName: 'Martin', lastName: 'Supervisor', role: Role.WASH_ATTENDANT, branchSlug: 'fgura' }, // Supervisor
+  { email: 'jerry@taspiru.com', firstName: 'Jerry', lastName: 'Attendant', role: Role.WASH_ATTENDANT, branchSlug: 'fgura' },
+  { email: 'kelvin@taspiru.com', firstName: 'Kelvin', lastName: 'Attendant', role: Role.WASH_ATTENDANT, branchSlug: 'fgura' },
 ];
 
 const STAFF: readonly OrgSeed[] = [...CORE_STAFF, ...BARBER_STAFF];
@@ -268,6 +283,21 @@ const main = async (): Promise<void> => {
         create: { locationId, serviceId: service.id },
       });
     }
+    // Seniority price tiers for barber haircuts: junior a touch cheaper, senior +€2.
+    if (spec.tiered) {
+      const tiers = [
+        { seniority: Seniority.JUNIOR, priceCents: Math.max(spec.priceCents - 100, 0), durationMin: spec.durationMin },
+        { seniority: Seniority.NORMAL, priceCents: spec.priceCents, durationMin: spec.durationMin },
+        { seniority: Seniority.SENIOR, priceCents: spec.priceCents + 200, durationMin: spec.durationMin },
+      ];
+      for (const t of tiers) {
+        await prisma.serviceTier.upsert({
+          where: { serviceId_seniority: { serviceId: service.id, seniority: t.seniority } },
+          update: { priceCents: t.priceCents, durationMin: t.durationMin },
+          create: { serviceId: service.id, ...t },
+        });
+      }
+    }
   }
   // Retire any service no longer in the menu (idempotent re-seeds).
   await prisma.service.updateMany({
@@ -338,9 +368,11 @@ const main = async (): Promise<void> => {
     if (spec.branchSlug && !locationId) {
       continue;
     }
+    const meta = spec.role === Role.BARBER ? BARBER_META.get(spec.email) : undefined;
+    const barberFields = meta ? { seniority: meta.seniority, stationNo: meta.stationNo } : {};
     const staff = await prisma.user.upsert({
       where: { email: spec.email },
-      update: { locationId, role: spec.role },
+      update: { locationId, role: spec.role, ...barberFields },
       create: {
         email: spec.email,
         firstName: spec.firstName,
@@ -349,6 +381,7 @@ const main = async (): Promise<void> => {
         locationId,
         passwordHash: staffPasswordHash,
         pinHash: staffPinHash,
+        ...barberFields,
       },
     });
 
@@ -373,6 +406,18 @@ const main = async (): Promise<void> => {
       });
     }
     await prisma.shift.createMany({ data: shifts });
+  }
+
+  // Example per-member service override (from the notes): barber Louis does the
+  // boys' haircut in 15 min and can take at most 4 of them per day.
+  const louis = await prisma.user.findUnique({ where: { email: 'louis@taspiru.com' }, select: { id: true } });
+  const boysCut = await prisma.service.findUnique({ where: { slug: 'boy-haircut' }, select: { id: true } });
+  if (louis && boysCut) {
+    await prisma.teamMemberService.upsert({
+      where: { userId_serviceId: { userId: louis.id, serviceId: boysCut.id } },
+      update: { isEnabled: true, durationMin: 15, maxDaily: 4 },
+      create: { userId: louis.id, serviceId: boysCut.id, isEnabled: true, durationMin: 15, maxDaily: 4 },
+    });
   }
 };
 
