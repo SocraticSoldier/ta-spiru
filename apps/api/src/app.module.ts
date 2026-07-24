@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { AccountModule } from './account/account.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { BarbersModule } from './barbers/barbers.module';
 import { BookingsModule } from './bookings/bookings.module';
 import { validateEnv } from './config/env.validation';
+import { CouponsModule } from './coupons/coupons.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { LocationsModule } from './locations/locations.module';
 import { LoyaltyModule } from './loyalty/loyalty.module';
@@ -43,6 +45,8 @@ import { WaitingListModule } from './waiting-list/waiting-list.module';
     TimeBlocksModule,
     WaitingListModule,
     AuditModule,
+    AccountModule,
+    CouponsModule,
   ],
 })
 export class AppModule {}

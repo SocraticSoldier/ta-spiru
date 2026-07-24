@@ -30,6 +30,11 @@ export class CreateBookingDto {
   @IsString()
   customerId?: string;
 
+  /** Book for a family member on the account (points stay on the account). */
+  @IsOptional()
+  @IsString()
+  memberId?: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(16)

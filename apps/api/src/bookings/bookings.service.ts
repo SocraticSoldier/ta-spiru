@@ -561,6 +561,15 @@ export class BookingsService {
       if (!service) {
         throw new BadRequestException(`Service ${dto.serviceId} not found or inactive`);
       }
+      if (dto.memberId) {
+        const member = await this.prisma.accountMember.findFirst({
+          where: { id: dto.memberId, accountId: customerId },
+          select: { id: true },
+        });
+        if (!member) {
+          throw new BadRequestException('That member is not on this account');
+        }
+      }
       if (service.kind === ServiceKind.BARBER && !dto.barberId) {
         throw new BadRequestException('barberId is required for barber services');
       }
@@ -644,6 +653,7 @@ export class BookingsService {
               lockedUntil: endsAt,
               priceCentsSnapshot: priceCents,
               source,
+              memberId: dto.memberId ?? null,
               vehicleReg: dto.vehicleReg ?? null,
               notes: dto.notes ?? null,
             },

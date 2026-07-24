@@ -1,5 +1,6 @@
 import { hashSync } from 'bcryptjs';
 import {
+  CouponKind,
   LedgerTag,
   PrismaClient,
   ProductCategory,
@@ -406,6 +407,34 @@ const main = async (): Promise<void> => {
       });
     }
     await prisma.shift.createMany({ data: shifts });
+  }
+
+  // Owner-tunable settings. The vault code guards monetary sales (demo: 1979 —
+  // change it in production); entering it reversed wipes sales system-wide.
+  const settings: ReadonlyArray<{ key: string; value: string; preserve?: boolean }> = [
+    { key: 'vault.codeHash', value: hashSync('1979', 10), preserve: true },
+    { key: 'sales.hidden', value: 'false', preserve: true },
+    { key: 'loyalty.pointValueCents', value: '5', preserve: true },
+  ];
+  for (const s of settings) {
+    await prisma.appSetting.upsert({
+      where: { key: s.key },
+      update: s.preserve ? {} : { value: s.value },
+      create: { key: s.key, value: s.value },
+    });
+  }
+
+  // Starter discount codes (the coupons section manages these in the admin).
+  const coupons = [
+    { code: 'BLACKFRIDAY10', kind: CouponKind.PERCENT, value: 10, notes: 'Site-wide campaign example' },
+    { code: 'BIRTHDAY5', kind: CouponKind.AMOUNT, value: 500, notes: 'Birthday gift — €5 off' },
+  ];
+  for (const c of coupons) {
+    await prisma.coupon.upsert({
+      where: { code: c.code },
+      update: {},
+      create: c,
+    });
   }
 
   // Example per-member service override (from the notes): barber Louis does the

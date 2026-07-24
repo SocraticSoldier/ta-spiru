@@ -152,6 +152,7 @@ model Location {
   appointments      Appointment[]
   queueEntries      QueueEntry[]
   waitingList       WaitingListEntry[]
+  coupons           Coupon[]
   stockLevels       StockLevel[]
   stockMovements    StockMovement[]
   orders            Order[]
@@ -206,6 +207,8 @@ model User {
   waitingListEntries   WaitingListEntry[] @relation("WaitingListCustomer")
   waitingListRequests  WaitingListEntry[] @relation("WaitingListBarber")
   serviceChanges       ServiceChangeLog[] @relation("ServiceChangeActor")
+  vehicles             Vehicle[]          @relation("CustomerVehicles")
+  accountMembers       AccountMember[]    @relation("AccountMembers")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -311,6 +314,78 @@ enum WaitingListStatus {
   OFFERED // reception has offered a freed slot
   BOOKED // converted into an appointment
   CANCELLED
+}
+
+enum VehicleSize {
+  SMALL
+  MEDIUM
+  LARGE
+}
+
+// A customer's saved car. Booking a wash pre-fills reg + size from here.
+model Vehicle {
+  id      String      @id @default(cuid())
+  ownerId String
+  owner   User        @relation("CustomerVehicles", fields: [ownerId], references: [id], onDelete: Cascade)
+  reg     String
+  make    String
+  model   String
+  size    VehicleSize
+  isActive Boolean    @default(true)
+
+  createdAt DateTime @default(now())
+
+  @@unique([ownerId, reg])
+}
+
+// A family member on a customer account (e.g. a parent booking for their kids).
+// Loyalty points always stay on the parent account.
+model AccountMember {
+  id        String  @id @default(cuid())
+  accountId String
+  account   User    @relation("AccountMembers", fields: [accountId], references: [id], onDelete: Cascade)
+  name      String
+  birthYear Int?
+
+  appointments Appointment[] @relation("MemberAppointments")
+
+  createdAt DateTime @default(now())
+
+  @@index([accountId])
+}
+
+enum CouponKind {
+  PERCENT
+  AMOUNT
+}
+
+// Discount codes, staff discounts and campaign codes (e.g. BLACKFRIDAY10).
+model Coupon {
+  id             String     @id @default(cuid())
+  code           String     @unique
+  kind           CouponKind
+  value          Int // percent (0-100) or cents, by kind
+  validFrom      DateTime?
+  validUntil     DateTime?
+  locationId     String? // null = all branches
+  location       Location?  @relation(fields: [locationId], references: [id])
+  lowPeakOnly    Boolean    @default(false) // e.g. neighbouring-company staff discounts
+  maxRedemptions Int?
+  redemptions    Int        @default(0)
+  isActive       Boolean    @default(true)
+  notes          String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Small key/value store for owner-tunable settings (loyalty point value,
+// the sales-vault code, the wipe flag, …).
+model AppSetting {
+  key   String @id
+  value String
+
+  updatedAt DateTime @updatedAt
 }
 
 // A customer who wants a fully-booked barber on a given day. Reception works
@@ -459,6 +534,8 @@ model Appointment {
 
   priceCentsSnapshot Int? // price charged at booking, after barber seniority/overrides
   source             BookingSource @default(ONLINE) // audit: where it was booked from
+  memberId           String? // booked for a family member on the account
+  member             AccountMember? @relation("MemberAppointments", fields: [memberId], references: [id])
 
   vehicleReg String? // wash segments
   notes      String?
