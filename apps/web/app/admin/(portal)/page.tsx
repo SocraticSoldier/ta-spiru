@@ -1,28 +1,28 @@
 import type { JSX } from 'react';
-import type { LocationSummary, RevenueSplitReport } from '@ta-spiru/shared';
+import type { AuthUser, LocationSummary } from '@ta-spiru/shared';
+import { VaultPanel } from '@/components/admin/vault-panel';
 import { apiFetch } from '@/lib/api';
-import { LEDGER_COLORS, locationColor } from '@/lib/colors';
-import { formatEuro, LEDGER_TAG_LABELS } from '@/lib/format';
+import { locationColor } from '@/lib/colors';
 
 interface DashboardData {
-  report: RevenueSplitReport | null;
+  user: AuthUser | null;
   locations: LocationSummary[];
 }
 
 const getDashboardData = async (): Promise<DashboardData> => {
   try {
-    const [report, locations] = await Promise.all([
-      apiFetch<RevenueSplitReport>('/reports/revenue-splits'),
+    const [user, locations] = await Promise.all([
+      apiFetch<AuthUser>('/auth/me'),
       apiFetch<LocationSummary[]>('/locations'),
     ]);
-    return { report, locations };
+    return { user, locations };
   } catch {
-    return { report: null, locations: [] };
+    return { user: null, locations: [] };
   }
 };
 
 const DashboardPage = async (): Promise<JSX.Element> => {
-  const { report, locations } = await getDashboardData();
+  const { user, locations } = await getDashboardData();
 
   return (
     <section>
@@ -34,33 +34,16 @@ const DashboardPage = async (): Promise<JSX.Element> => {
       </div>
 
       <h2 className="mt-8 font-sans text-sm font-semibold uppercase tracking-[0.2em] text-white/50">
-        Settled revenue by ledger
+        Sales — owner only
       </h2>
       <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {(report?.lines ?? []).map((line) => {
-          const accent = LEDGER_COLORS[line.ledgerTag] ?? LEDGER_COLORS['BARBER_SERVICES'];
-          return (
-            <div
-              key={line.ledgerTag}
-              className="rounded-2xl border border-white/10 p-5"
-              style={{
-                background: `linear-gradient(150deg, ${accent?.soft ?? 'transparent'}, rgba(28,28,30,0.85) 60%)`,
-                boxShadow: `inset 0 2px 0 ${accent?.solid ?? 'transparent'}`,
-              }}
-            >
-              <p className="text-sm text-white/60">{LEDGER_TAG_LABELS[line.ledgerTag] ?? line.ledgerTag}</p>
-              <p className="font-display mt-2 text-4xl" style={{ color: accent?.text }}>
-                {formatEuro(line.amountCents)}
-              </p>
-              <p className="mt-1 text-xs text-white/40">{line.splitCount} ledger entries</p>
-            </div>
-          );
-        })}
-        {report === null ? (
+        {user?.role === 'ADMIN' ? (
+          <VaultPanel />
+        ) : (
           <div className="rounded-xl border border-dashed border-white/15 p-5 text-sm text-white/50 sm:col-span-2 lg:col-span-4">
-            Revenue report unavailable — visible to owner/admin accounts only.
+            Revenue is visible to owner/admin accounts only.
           </div>
-        ) : null}
+        )}
       </div>
 
       <h2 className="mt-10 font-sans text-sm font-semibold uppercase tracking-[0.2em] text-white/50">
