@@ -301,4 +301,23 @@ describe('Service photos, barber POS, reschedule, leaderboard & birthday coupon 
 
     await prisma.order.delete({ where: { id: sale.body.orderId } });
   });
+
+  it('finds a customer by their full name, not just a single field', async () => {
+    const email = uniqueEmail('fullname');
+    const reg = await http
+      .post('/api/v1/auth/register')
+      .send({ email, password: 'Lifestyle!1', firstName: 'Katrina', lastName: 'Zammit' })
+      .expect(201);
+
+    // Neither "firstName" nor "lastName" alone contains the full two-word
+    // query, so this only matches if the search checks each word separately.
+    const byFullName = await http.get('/api/v1/customers').query({ q: 'Katrina Zammit' }).set(auth(adminToken)).expect(200);
+    expect(byFullName.body.some((c: { id: string }) => c.id === reg.body.user.id)).toBe(true);
+
+    const byFirstOnly = await http.get('/api/v1/customers').query({ q: 'Katrina' }).set(auth(adminToken)).expect(200);
+    expect(byFirstOnly.body.some((c: { id: string }) => c.id === reg.body.user.id)).toBe(true);
+
+    const noMatch = await http.get('/api/v1/customers').query({ q: 'Katrina Nonexistent' }).set(auth(adminToken)).expect(200);
+    expect(noMatch.body.some((c: { id: string }) => c.id === reg.body.user.id)).toBe(false);
+  });
 });

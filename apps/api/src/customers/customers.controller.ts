@@ -130,7 +130,26 @@ export class CustomersController {
   ): Promise<Record<string, unknown>[]> {
     try {
       const term = (q ?? '').trim();
-      const contains = { contains: term, mode: Prisma.QueryMode.insensitive };
+      // Each word must match somewhere (any field), so a full name like "Wendy
+      // Borg" matches firstName+lastName even though neither field alone
+      // contains the two-word string.
+      const words = term.split(/\s+/).filter(Boolean);
+      const wordFilter = (word: string): Prisma.UserWhereInput => {
+        const contains = { contains: word, mode: Prisma.QueryMode.insensitive };
+        return {
+          OR: [
+            { firstName: contains },
+            { lastName: contains },
+            { email: contains },
+            { phone: contains },
+            { occupation: contains },
+            { workplace: contains },
+            { staffNumber: contains },
+            { vehicles: { some: { reg: contains } } },
+            { accountMembers: { some: { name: contains } } },
+          ],
+        };
+      };
       const groupFilter: Prisma.UserWhereInput =
         group === 'staff'
           ? { isTaSpiruStaff: true }
@@ -143,21 +162,7 @@ export class CustomersController {
         where: {
           role: Role.CUSTOMER,
           ...groupFilter,
-          ...(term
-            ? {
-                OR: [
-                  { firstName: contains },
-                  { lastName: contains },
-                  { email: contains },
-                  { phone: contains },
-                  { occupation: contains },
-                  { workplace: contains },
-                  { staffNumber: contains },
-                  { vehicles: { some: { reg: contains } } },
-                  { accountMembers: { some: { name: contains } } },
-                ],
-              }
-            : {}),
+          ...(words.length > 0 ? { AND: words.map(wordFilter) } : {}),
         },
         orderBy: { createdAt: 'desc' },
         take: 100,

@@ -57,6 +57,37 @@ export const rescheduleBooking = async (formData: FormData): Promise<void> => {
   revalidatePath('/admin/calendar');
 };
 
+/** Reception/admin booking a customer in over the phone or at the desk. */
+export const createManualBooking = async (formData: FormData): Promise<void> => {
+  const customerId = String(formData.get('customerId') ?? '');
+  const locationId = String(formData.get('locationId') ?? '');
+  const serviceId = String(formData.get('serviceId') ?? '');
+  const slot = String(formData.get('slot') ?? '');
+  const notes = String(formData.get('notes') ?? '').trim();
+  const [startsAt, barberId] = slot.split('|');
+
+  if (!customerId || !locationId || !serviceId || !startsAt || !barberId) {
+    return;
+  }
+
+  try {
+    await apiFetch('/bookings', {
+      method: 'POST',
+      body: JSON.stringify({
+        locationId,
+        serviceId,
+        startsAt,
+        barberId,
+        customerId,
+        notes: notes || undefined,
+      }),
+    });
+  } catch {
+    return;
+  }
+  revalidatePath('/admin/calendar');
+};
+
 export const deleteTimeBlock = async (formData: FormData): Promise<void> => {
   const blockId = String(formData.get('blockId') ?? '');
   if (!blockId) {
