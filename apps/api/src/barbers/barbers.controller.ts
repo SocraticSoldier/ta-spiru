@@ -68,9 +68,14 @@ export class BarbersController {
         if (existing) {
           existing.services.push(a.service.name);
           const end = a.endsAt.toISOString();
-          if (end > existing.endsAt) existing.endsAt = end;
+          if (end > existing.endsAt) {
+            existing.endsAt = end;
+            existing.lastAppointmentId = a.id;
+          }
         } else {
           byVisit.set(key, {
+            id: a.id,
+            lastAppointmentId: a.id,
             startsAt: a.startsAt.toISOString(),
             endsAt: a.endsAt.toISOString(),
             status: a.status,

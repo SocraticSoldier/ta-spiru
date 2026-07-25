@@ -67,9 +67,10 @@ describe('Barber kiosk schedule — client privacy (e2e)', () => {
     expect(row).toBeDefined();
     expect(row.services).toContain('Haircut');
 
-    // Privacy: the payload must not leak anything beyond name + services + timing.
+    // Privacy: the payload must not leak anything beyond name + services + timing
+    // (the appointment ids are opaque and only exist so the kiosk can act on the visit).
     const keys = Object.keys(row).sort();
-    expect(keys).toEqual(['clientName', 'endsAt', 'services', 'startsAt', 'status']);
+    expect(keys).toEqual(['clientName', 'endsAt', 'id', 'lastAppointmentId', 'services', 'startsAt', 'status']);
     const blob = JSON.stringify(res.body).toLowerCase();
     expect(blob).not.toContain('35679000111'); // phone
     expect(blob).not.toContain('aftershave'); // notes

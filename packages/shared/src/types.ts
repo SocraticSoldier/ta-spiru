@@ -232,6 +232,10 @@ export interface WaitingListRow {
  * client's name and the requested services — no contact details, notes or price.
  */
 export interface BarberScheduleRow {
+  /** The visit's primary appointment — use for status changes. */
+  id: string;
+  /** The latest segment in the visit — use for add-service so it appends at the true end. */
+  lastAppointmentId: string;
   startsAt: string;
   endsAt: string;
   status: string;

@@ -67,7 +67,19 @@ const KioskPage = async ({
   ]);
   const locationName = locations.find((location) => location.id === locationId)?.name ?? 'Branch';
 
-  return <KioskClient locationId={locationId} locationName={locationName} staff={staff} />;
+  return (
+    <>
+      {user.role === 'BARBER' ? (
+        <Link
+          href="/my-day"
+          className="fixed right-5 top-5 z-10 rounded-lg border border-white/15 bg-graphite px-3.5 py-2 text-sm text-white/70 transition hover:border-bronze hover:text-bronze-light"
+        >
+          My day →
+        </Link>
+      ) : null}
+      <KioskClient locationId={locationId} locationName={locationName} staff={staff} />
+    </>
+  );
 };
 
 export default KioskPage;

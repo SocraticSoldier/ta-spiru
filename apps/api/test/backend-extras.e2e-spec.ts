@@ -166,4 +166,19 @@ describe('Service photos, barber POS, reschedule, leaderboard & birthday coupon 
       .expect(201);
     expect(bf.body.discountCents).toBe(200);
   });
+
+  it('lets a barber see the kiosk clock-in roster for their own branch', async () => {
+    // Previously only MANAGER/RECEPTIONIST could — barbers signed into a
+    // shared kiosk device couldn't see who to punch in, including themselves.
+    const roster = await http.get('/api/v1/timeclock/staff').query({ locationId: naxxarId }).set(auth(louisToken)).expect(200);
+    expect(roster.body.some((s: { name: string }) => s.name.includes('Louis'))).toBe(true);
+
+    const customerToken = (
+      await http
+        .post('/api/v1/auth/register')
+        .send({ email: uniqueEmail('roster'), password: 'Lifestyle!1', firstName: 'No', lastName: 'Access' })
+        .expect(201)
+    ).body.accessToken;
+    await http.get('/api/v1/timeclock/staff').query({ locationId: naxxarId }).set(auth(customerToken)).expect(403);
+  });
 });

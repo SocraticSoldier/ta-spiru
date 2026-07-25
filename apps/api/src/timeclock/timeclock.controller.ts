@@ -23,7 +23,7 @@ export class TimeclockController {
 
   /** Kiosk staff grid for a branch (device session scopes the location). */
   @Get('staff')
-  @Roles(Role.MANAGER, Role.RECEPTIONIST)
+  @Roles(Role.MANAGER, Role.RECEPTIONIST, Role.BARBER, Role.WASH_ATTENDANT)
   roster(@Query('locationId') locationId: string): Promise<KioskStaffMember[]> {
     return this.timeclockService.roster(locationId);
   }
