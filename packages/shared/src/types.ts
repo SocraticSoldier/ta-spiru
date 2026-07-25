@@ -72,6 +72,7 @@ export interface StockLevelRow {
   sku: string;
   productName: string;
   brand: string | null;
+  priceCents: number;
   locationId: string;
   locationName: string;
   quantity: number;

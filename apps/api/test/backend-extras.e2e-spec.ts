@@ -55,8 +55,14 @@ describe('Service photos, barber POS, reschedule, leaderboard & birthday coupon 
     expect(barberFade.description).toBe('A sharp fade.');
   });
 
-  it('lets a barber take a real POS sale', async () => {
+  it('lets a barber take a real POS sale, with prices exposed on the till catalog', async () => {
     const product = await prisma.product.findFirstOrThrow({ where: { sku: 'TS-BEARD-OIL' } });
+
+    // The barber's till on /my-day builds its catalog from this endpoint.
+    const levels = await http.get('/api/v1/inventory/levels').query({ locationId: naxxarId }).set(auth(louisToken)).expect(200);
+    const row = levels.body.find((r: { productId: string }) => r.productId === product.id);
+    expect(row.priceCents).toBe(product.priceCents);
+
     const res = await http
       .post('/api/v1/orders/pos')
       .set(auth(louisToken))
@@ -234,5 +240,27 @@ describe('Service photos, barber POS, reschedule, leaderboard & birthday coupon 
     await http.post('/api/v1/team/me/tips').set(auth(customerToken)).send({ amountCents: 100 }).expect(403);
 
     await prisma.appointment.updateMany({ where: { id: booking.body.id }, data: { status: 'CANCELLED' } });
+  });
+
+  it('drops cancelled visits from the barber schedule so the day view stays clean', async () => {
+    const day = futureDate(22);
+    const kept = await http
+      .post('/api/v1/bookings')
+      .set(auth(adminToken))
+      .send({ locationId: naxxarId, serviceId: fadeId, startsAt: `${day}T09:00:00.000Z`, barberId: louisId, notes: 'e2e-reschedule' })
+      .expect(201);
+    const cancelled = await http
+      .post('/api/v1/bookings')
+      .set(auth(adminToken))
+      .send({ locationId: naxxarId, serviceId: fadeId, startsAt: `${day}T11:00:00.000Z`, barberId: louisId, notes: 'e2e-reschedule' })
+      .expect(201);
+    await prisma.appointment.update({ where: { id: cancelled.body.id }, data: { status: 'CANCELLED' } });
+
+    const schedule = await http.get('/api/v1/barbers/me/schedule').query({ date: day }).set(auth(louisToken)).expect(200);
+    const ids = schedule.body.map((row: { id: string }) => row.id);
+    expect(ids).toContain(kept.body.id);
+    expect(ids).not.toContain(cancelled.body.id);
+
+    await prisma.appointment.updateMany({ where: { id: { in: [kept.body.id, cancelled.body.id] } }, data: { status: 'CANCELLED' } });
   });
 });

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import type { JSX } from 'react';
-import type { AuthUser, BarberScheduleRow, ServiceSummary, TipsSummary } from '@ta-spiru/shared';
+import type { AuthUser, BarberScheduleRow, ServiceSummary, StockLevelRow, TipsSummary } from '@ta-spiru/shared';
 import { MyDayClient } from '@/components/barber/my-day-client';
 import { apiFetch } from '@/lib/api';
 import { todayMalta } from '@/lib/time';
@@ -26,10 +26,13 @@ const MyDayPage = async (): Promise<JSX.Element> => {
   }
 
   const date = todayMalta();
-  const [schedule, services, tips] = await Promise.all([
+  const [schedule, services, tips, products] = await Promise.all([
     apiFetch<BarberScheduleRow[]>(`/barbers/me/schedule?date=${date}`).catch((): BarberScheduleRow[] => []),
     apiFetch<ServiceSummary[]>('/services?kind=BARBER').catch((): ServiceSummary[] => []),
     apiFetch<TipsSummary>('/team/me/tips').catch((): TipsSummary => ({ totalCents: 0, entries: [] })),
+    user.locationId
+      ? apiFetch<StockLevelRow[]>(`/inventory/levels?locationId=${user.locationId}`).catch((): StockLevelRow[] => [])
+      : Promise.resolve<StockLevelRow[]>([]),
   ]);
 
   return (
@@ -37,6 +40,8 @@ const MyDayPage = async (): Promise<JSX.Element> => {
       initialSchedule={schedule}
       services={services}
       initialTips={tips}
+      products={products}
+      locationId={user.locationId}
       barberName={`${user.firstName} ${user.lastName}`.trim()}
     />
   );

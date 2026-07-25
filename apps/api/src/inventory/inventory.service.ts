@@ -304,6 +304,7 @@ export class InventoryService {
       sku: product.sku,
       productName: product.name,
       brand: product.brand,
+      priceCents: product.priceCents,
       locationId,
       locationName,
       quantity,

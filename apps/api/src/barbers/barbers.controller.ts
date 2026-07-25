@@ -11,7 +11,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { Role, ServiceKind } from '@ta-spiru/database';
+import { AppointmentStatus, Role, ServiceKind } from '@ta-spiru/database';
 import { UpsertBarberServiceDto } from '../services/dto/services-admin.dtos';
 import {
   resolveServicePricing,
@@ -49,7 +49,11 @@ export class BarbersController {
       const dayStart = new Date(`${day}T00:00:00.000Z`);
       const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
       const appts = await this.prisma.appointment.findMany({
-        where: { barberId: user.id, startsAt: { gte: dayStart, lt: dayEnd } },
+        where: {
+          barberId: user.id,
+          startsAt: { gte: dayStart, lt: dayEnd },
+          status: { not: AppointmentStatus.CANCELLED },
+        },
         orderBy: { startsAt: 'asc' },
         select: {
           id: true,

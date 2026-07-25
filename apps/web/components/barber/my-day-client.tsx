@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import type { JSX } from 'react';
-import type { BarberScheduleRow, ServiceSummary, TipsSummary } from '@ta-spiru/shared';
+import type { BarberScheduleRow, PosCheckoutResponse, ServiceSummary, StockLevelRow, TipsSummary } from '@ta-spiru/shared';
 import { SignOutButton } from '@/components/admin/sign-out-button';
 import { formatEuro } from '@/lib/format';
 import { formatTimeMalta } from '@/lib/time';
@@ -45,11 +45,15 @@ export const MyDayClient = ({
   initialSchedule,
   services,
   initialTips,
+  products,
+  locationId,
   barberName,
 }: {
   initialSchedule: BarberScheduleRow[];
   services: ServiceSummary[];
   initialTips: TipsSummary;
+  products: StockLevelRow[];
+  locationId: string | null;
   barberName: string;
 }): JSX.Element => {
   const router = useRouter();
@@ -60,6 +64,11 @@ export const MyDayClient = ({
   const [error, setError] = useState<string | null>(null);
   const [tips, setTips] = useState<TipsSummary>(initialTips);
   const [now, setNow] = useState(() => Date.now());
+  const [tillOpen, setTillOpen] = useState(false);
+  const [cart, setCart] = useState<Record<string, number>>({});
+  const [posBusy, setPosBusy] = useState(false);
+  const [posError, setPosError] = useState<string | null>(null);
+  const [receipt, setReceipt] = useState<PosCheckoutResponse | null>(null);
 
   useEffect(() => {
     const tick = setInterval(() => setNow(Date.now()), 20_000);
@@ -141,6 +150,55 @@ export const MyDayClient = ({
     setTippingFor(null);
   };
 
+  const productsById = new Map(products.map((p) => [p.productId, p]));
+  const cartLines = Object.entries(cart)
+    .filter(([, qty]) => qty > 0)
+    .map(([productId, qty]) => ({ product: productsById.get(productId), qty }))
+    .filter((line): line is { product: StockLevelRow; qty: number } => Boolean(line.product));
+  const cartTotalCents = cartLines.reduce((sum, line) => sum + line.product.priceCents * line.qty, 0);
+
+  const addToCart = (product: StockLevelRow): void => {
+    setCart((prev) => {
+      const current = prev[product.productId] ?? 0;
+      if (current >= product.quantity) return prev;
+      return { ...prev, [product.productId]: current + 1 };
+    });
+  };
+
+  const removeFromCart = (productId: string): void => {
+    setCart((prev) => {
+      const current = prev[productId] ?? 0;
+      if (current <= 1) {
+        const { [productId]: _drop, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [productId]: current - 1 };
+    });
+  };
+
+  const checkout = async (): Promise<void> => {
+    if (!locationId || cartLines.length === 0) return;
+    setPosBusy(true);
+    setPosError(null);
+    const res = await fetch('/api/barber/pos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        locationId,
+        items: cartLines.map((line) => ({ productId: line.product.productId, quantity: line.qty })),
+      }),
+    });
+    setPosBusy(false);
+    if (!res.ok) {
+      const payload = (await res.json().catch(() => null)) as { message?: string } | null;
+      setPosError(payload?.message ?? 'Could not complete the sale');
+      return;
+    }
+    const result = (await res.json()) as PosCheckoutResponse;
+    setReceipt(result);
+    setCart({});
+  };
+
   return (
     <main className="mx-auto max-w-2xl px-6 py-10">
       <div className="flex items-center justify-between">
@@ -198,6 +256,93 @@ export const MyDayClient = ({
           ) : null}
         </div>
       ) : null}
+
+      <div className="mt-4 rounded-xl border border-white/10 bg-graphite p-4">
+        <button
+          type="button"
+          onClick={() => setTillOpen((open) => !open)}
+          className="flex w-full items-center justify-between text-sm"
+        >
+          <span className="font-medium">Sell products</span>
+          <span className="text-white/50">{tillOpen ? 'Close till' : 'Open till'}</span>
+        </button>
+
+        {tillOpen ? (
+          <div className="mt-3 border-t border-white/5 pt-3">
+            {receipt ? (
+              <div className="rounded-lg border border-emerald-400/25 bg-emerald-500/10 p-3 text-sm text-emerald-100">
+                <p>
+                  Sale recorded — {formatEuro(receipt.totalCents)}. Ref {receipt.paymentIntent.paymentReference}.
+                </p>
+                <p className="mt-1 text-xs text-emerald-200/70">Hand the terminal to the client to complete payment.</p>
+                <button
+                  type="button"
+                  onClick={() => setReceipt(null)}
+                  className="mt-2 rounded-md border border-white/15 px-3 py-1.5 text-xs text-white/70 transition hover:text-white"
+                >
+                  New sale
+                </button>
+              </div>
+            ) : (
+              <>
+                {products.length === 0 ? (
+                  <p className="text-xs text-white/40">No stock on file for your branch.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {products.map((p) => (
+                      <button
+                        key={p.productId}
+                        type="button"
+                        disabled={posBusy || p.quantity <= (cart[p.productId] ?? 0)}
+                        onClick={() => addToCart(p)}
+                        className="rounded-md bg-white/5 px-2.5 py-1 text-xs text-white/70 transition hover:bg-bronze/15 hover:text-bronze-light disabled:opacity-30"
+                      >
+                        {p.productName} · {formatEuro(p.priceCents)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {cartLines.length > 0 ? (
+                  <div className="mt-3 flex flex-col gap-1.5 border-t border-white/5 pt-3">
+                    {cartLines.map((line) => (
+                      <div key={line.product.productId} className="flex items-center justify-between text-sm">
+                        <span>
+                          {line.qty} × {line.product.productName}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="tabular-nums text-white/60">{formatEuro(line.product.priceCents * line.qty)}</span>
+                          <button
+                            type="button"
+                            disabled={posBusy}
+                            onClick={() => removeFromCart(line.product.productId)}
+                            className="rounded-md border border-white/15 px-2 py-0.5 text-xs text-white/60 transition hover:text-white disabled:opacity-30"
+                          >
+                            −
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="mt-1 flex items-center justify-between border-t border-white/5 pt-2 text-sm font-medium">
+                      <span>Total</span>
+                      <span className="text-bronze-light">{formatEuro(cartTotalCents)}</span>
+                    </div>
+                    {posError ? <p className="text-xs text-red-300">{posError}</p> : null}
+                    <button
+                      type="button"
+                      disabled={posBusy}
+                      onClick={() => void checkout()}
+                      className="mt-1 rounded-md bg-bronze px-3 py-1.5 text-sm font-medium text-graphite-deep transition hover:bg-bronze-light disabled:opacity-50"
+                    >
+                      Charge {formatEuro(cartTotalCents)}
+                    </button>
+                  </div>
+                ) : null}
+              </>
+            )}
+          </div>
+        ) : null}
+      </div>
 
       {error ? <p className="mt-4 rounded-lg border border-red-400/25 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</p> : null}
 
