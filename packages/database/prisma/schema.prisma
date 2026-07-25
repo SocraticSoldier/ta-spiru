@@ -143,13 +143,15 @@ enum ContactChannel {
 // ─────────────────────────────── Network ───────────────────────────────
 
 model Location {
-  id       String  @id @default(cuid())
-  slug     String  @unique
-  name     String
-  address  String
-  phone    String?
-  timezone String  @default("Europe/Malta")
-  isActive Boolean @default(true)
+  id        String  @id @default(cuid())
+  slug      String  @unique
+  name      String
+  address   String
+  latitude  Float?
+  longitude Float?
+  phone     String?
+  timezone  String  @default("Europe/Malta")
+  isActive  Boolean @default(true)
 
   // Barber-operated outlets run a virtual, account-based FIFO queue instead of
   // a reception desk; the in-store screen doubles as the barbers' station login.
@@ -225,28 +227,28 @@ model User {
 
   shifts               Shift[]
   timeEntries          TimeEntry[]
-  barberAppointments   Appointment[]   @relation("AppointmentBarber")
-  customerAppointments Appointment[]   @relation("AppointmentCustomer")
+  barberAppointments   Appointment[]       @relation("AppointmentBarber")
+  customerAppointments Appointment[]       @relation("AppointmentCustomer")
   queueEntries         QueueEntry[]
   stockMovements       StockMovement[]
   orders               Order[]
   transactions         Transaction[]
   loyaltyAccount       LoyaltyAccount?
-  timeBlocks           TimeBlock[]     @relation("TimeBlockBarber")
-  createdTimeBlocks    TimeBlock[]     @relation("TimeBlockCreator")
+  timeBlocks           TimeBlock[]         @relation("TimeBlockBarber")
+  createdTimeBlocks    TimeBlock[]         @relation("TimeBlockCreator")
   serviceOverrides     TeamMemberService[]
-  waitingListEntries   WaitingListEntry[] @relation("WaitingListCustomer")
-  waitingListRequests  WaitingListEntry[] @relation("WaitingListBarber")
-  serviceChanges       ServiceChangeLog[] @relation("ServiceChangeActor")
-  vehicles             Vehicle[]          @relation("CustomerVehicles")
-  accountMembers       AccountMember[]    @relation("AccountMembers")
-  leaveRequests        LeaveRequest[]     @relation("StaffLeave")
-  notifications        Notification[]     @relation("UserNotifications")
-  reviewsWritten       Review[]           @relation("ReviewCustomer")
-  reviewsReceived      Review[]           @relation("ReviewBarber")
-  documents            StaffDocument[]    @relation("StaffDocuments")
-  uploadedDocuments    StaffDocument[]    @relation("StaffDocumentUploader")
-  tipsReceived         Tip[]              @relation("BarberTips")
+  waitingListEntries   WaitingListEntry[]  @relation("WaitingListCustomer")
+  waitingListRequests  WaitingListEntry[]  @relation("WaitingListBarber")
+  serviceChanges       ServiceChangeLog[]  @relation("ServiceChangeActor")
+  vehicles             Vehicle[]           @relation("CustomerVehicles")
+  accountMembers       AccountMember[]     @relation("AccountMembers")
+  leaveRequests        LeaveRequest[]      @relation("StaffLeave")
+  notifications        Notification[]      @relation("UserNotifications")
+  reviewsWritten       Review[]            @relation("ReviewCustomer")
+  reviewsReceived      Review[]            @relation("ReviewBarber")
+  documents            StaffDocument[]     @relation("StaffDocuments")
+  uploadedDocuments    StaffDocument[]     @relation("StaffDocumentUploader")
+  tipsReceived         Tip[]               @relation("BarberTips")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -362,14 +364,14 @@ enum VehicleSize {
 
 // A customer's saved car. Booking a wash pre-fills reg + size from here.
 model Vehicle {
-  id      String      @id @default(cuid())
-  ownerId String
-  owner   User        @relation("CustomerVehicles", fields: [ownerId], references: [id], onDelete: Cascade)
-  reg     String
-  make    String
-  model   String
-  size    VehicleSize
-  isActive Boolean    @default(true)
+  id       String      @id @default(cuid())
+  ownerId  String
+  owner    User        @relation("CustomerVehicles", fields: [ownerId], references: [id], onDelete: Cascade)
+  reg      String
+  make     String
+  model    String
+  size     VehicleSize
+  isActive Boolean     @default(true)
 
   createdAt DateTime @default(now())
 
@@ -379,9 +381,9 @@ model Vehicle {
 // A family member on a customer account (e.g. a parent booking for their kids).
 // Loyalty points always stay on the parent account.
 model AccountMember {
-  id        String  @id @default(cuid())
+  id        String @id @default(cuid())
   accountId String
-  account   User    @relation("AccountMembers", fields: [accountId], references: [id], onDelete: Cascade)
+  account   User   @relation("AccountMembers", fields: [accountId], references: [id], onDelete: Cascade)
   name      String
   birthYear Int?
 
@@ -399,21 +401,21 @@ enum CouponKind {
 
 // Discount codes, staff discounts and campaign codes (e.g. BLACKFRIDAY10).
 model Coupon {
-  id             String     @id @default(cuid())
-  code           String     @unique
-  kind           CouponKind
-  value          Int // percent (0-100) or cents, by kind
-  validFrom      DateTime?
-  validUntil     DateTime?
-  locationId     String? // null = all branches
-  location       Location?  @relation(fields: [locationId], references: [id])
-  lowPeakOnly    Boolean    @default(false) // e.g. neighbouring-company staff discounts
-  maxRedemptions Int?
-  redemptions    Int        @default(0)
-  isActive       Boolean    @default(true)
-  notes          String?
+  id               String     @id @default(cuid())
+  code             String     @unique
+  kind             CouponKind
+  value            Int // percent (0-100) or cents, by kind
+  validFrom        DateTime?
+  validUntil       DateTime?
+  locationId       String? // null = all branches
+  location         Location?  @relation(fields: [locationId], references: [id])
+  lowPeakOnly      Boolean    @default(false) // e.g. neighbouring-company staff discounts
+  maxRedemptions   Int?
+  redemptions      Int        @default(0)
+  isActive         Boolean    @default(true)
+  notes            String?
   // Auto-gated on the requesting customer's birthday month instead of a fixed window.
-  isBirthdayReward Boolean  @default(false)
+  isBirthdayReward Boolean    @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -442,8 +444,8 @@ model Review {
   overall      Int // 1–5
   answers      Int[] // the six questionnaire answers, 1–5 each
   comment      String?
-  isPublished  Boolean  @default(true) // admin can hide a review
-  sharedGoogle Boolean  @default(false) // pushed to Google reviews
+  isPublished  Boolean @default(true) // admin can hide a review
+  sharedGoogle Boolean @default(false) // pushed to Google reviews
 
   createdAt DateTime @default(now())
 
@@ -453,13 +455,13 @@ model Review {
 // A folder of documents against a staff member (contract, ID, certificates).
 // The row records where the file lives; the bytes sit in object storage.
 model StaffDocument {
-  id       String  @id @default(cuid())
-  userId   String
-  user     User    @relation("StaffDocuments", fields: [userId], references: [id], onDelete: Cascade)
-  folder   String  @default("General")
-  name     String
-  url      String
-  mimeType String?
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation("StaffDocuments", fields: [userId], references: [id], onDelete: Cascade)
+  folder    String  @default("General")
+  name      String
+  url       String
+  mimeType  String?
   sizeBytes Int?
 
   uploadedById String?
@@ -555,10 +557,10 @@ model ServiceTier {
 // (ENABLED / PRICE / DURATION / MAX DAILY) from the existing system.
 model TeamMemberService {
   userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   serviceId   String
-  service     Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  isEnabled   Boolean  @default(true)
+  service     Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  isEnabled   Boolean @default(true)
   priceCents  Int? // override; falls back to the seniority tier, then service default
   durationMin Int? // override; falls back to the seniority tier, then service default
   maxDaily    Int? // once reached, this barber takes no more of this service that day
@@ -660,7 +662,7 @@ model Appointment {
   transaction   Transaction? @relation(fields: [transactionId], references: [id])
 
   priceCentsSnapshot Int? // price charged at booking, after barber seniority/overrides
-  source             BookingSource @default(ONLINE) // audit: where it was booked from
+  source             BookingSource  @default(ONLINE) // audit: where it was booked from
   memberId           String? // booked for a family member on the account
   member             AccountMember? @relation("MemberAppointments", fields: [memberId], references: [id])
 
@@ -684,18 +686,18 @@ model Appointment {
 // swapped a service, …). Every entry notifies the admin dashboard — both the
 // anti-theft angle and the positive upsell report read from this log.
 model ServiceChangeLog {
-  id            String      @id @default(cuid())
-  appointmentId String
-  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
-  changedById   String
-  changedBy     User        @relation("ServiceChangeActor", fields: [changedById], references: [id])
-  action        String // ADDED | REMOVED
-  serviceName   String
-  priceCents    Int // price delta the change introduced
-  minutes       Int // duration delta
-  overlapAccepted Boolean @default(false) // barber accepted the responsibility pop-up
-  acknowledged  Boolean  @default(false) // admin has seen it
-  createdAt     DateTime @default(now())
+  id              String      @id @default(cuid())
+  appointmentId   String
+  appointment     Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  changedById     String
+  changedBy       User        @relation("ServiceChangeActor", fields: [changedById], references: [id])
+  action          String // ADDED | REMOVED
+  serviceName     String
+  priceCents      Int // price delta the change introduced
+  minutes         Int // duration delta
+  overlapAccepted Boolean     @default(false) // barber accepted the responsibility pop-up
+  acknowledged    Boolean     @default(false) // admin has seen it
+  createdAt       DateTime    @default(now())
 
   @@index([createdAt])
   @@index([acknowledged])

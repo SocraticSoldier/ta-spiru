@@ -110,6 +110,8 @@ export class LocationsService {
       chairCount: resources.filter((resource) => resource.kind === ResourceKind.BARBER_CHAIR).length,
       bayCount: resources.filter((resource) => resource.kind === ResourceKind.WASH_BAY).length,
       isBarberOperated: location.isBarberOperated,
+      latitude: location.latitude,
+      longitude: location.longitude,
     };
   }
 }

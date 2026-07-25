@@ -56,6 +56,23 @@ const STREAMS: readonly StreamSpec[] = [
   },
 ];
 
+interface Coords {
+  lat: number;
+  lng: number;
+}
+
+/** Great-circle distance in km — plenty precise for "which branch is closer". */
+const distanceKm = (a: Coords, b: Coords): number => {
+  const R = 6371;
+  const toRad = (deg: number): number => (deg * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const sinLat = Math.sin(dLat / 2);
+  const sinLng = Math.sin(dLng / 2);
+  const h = sinLat * sinLat + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * sinLng * sinLng;
+  return R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+};
+
 const fetchJson = async <T,>(path: string): Promise<T> => {
   const response = await fetch(`${API_URL}/api/v1${path}`, { cache: 'no-store' });
   if (!response.ok) {
@@ -101,6 +118,25 @@ export const BookingWizard = ({ initialStream }: { initialStream?: string }): JS
   const [result, setResult] = useState<BookingActionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [coords, setCoords] = useState<Coords | null>(null);
+  const [geoStatus, setGeoStatus] = useState<'idle' | 'asking' | 'granted' | 'denied' | 'unavailable'>('idle');
+
+  const useMyLocation = (): void => {
+    if (!('geolocation' in navigator)) {
+      setGeoStatus('unavailable');
+      return;
+    }
+    setGeoStatus('asking');
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setCoords({ lat: position.coords.latitude, lng: position.coords.longitude });
+        setGeoStatus('granted');
+      },
+      () => setGeoStatus('denied'),
+      { timeout: 8000 },
+    );
+  };
+
   useEffect(() => {
     Promise.all([
       fetchJson<LocationSummary[]>('/locations'),
@@ -115,7 +151,14 @@ export const BookingWizard = ({ initialStream }: { initialStream?: string }): JS
 
   const spec = STREAMS.find((candidate) => candidate.key === stream) ?? null;
   const needsWashBay = stream === 'WASH' || stream === 'COMBO';
-  const branches = needsWashBay ? locations.filter((location) => location.bayCount > 0) : locations;
+  const eligibleBranches = needsWashBay ? locations.filter((location) => location.bayCount > 0) : locations;
+  const branches = coords
+    ? [...eligibleBranches].sort((a, b) => {
+        const distA = a.latitude !== null && a.longitude !== null ? distanceKm(coords, { lat: a.latitude, lng: a.longitude }) : Infinity;
+        const distB = b.latitude !== null && b.longitude !== null ? distanceKm(coords, { lat: b.latitude, lng: b.longitude }) : Infinity;
+        return distA - distB;
+      })
+    : eligibleBranches;
   const barberServices = services.filter(
     (service) => service.kind === 'BARBER' && (stream !== 'COMBO' || service.isComboEligible),
   );
@@ -332,18 +375,41 @@ export const BookingWizard = ({ initialStream }: { initialStream?: string }): JS
       {/* 2 — where */}
       {stream ? (
         <div className={stepCard}>
-          <h2 className="text-2xl">Which branch?</h2>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {branches.map((location) => (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-2xl">Which branch?</h2>
+            {geoStatus === 'idle' || geoStatus === 'asking' ? (
               <button
-                key={location.id}
                 type="button"
-                onClick={() => setLocationId(location.id)}
-                className={chip(locationId === location.id)}
+                onClick={useMyLocation}
+                disabled={geoStatus === 'asking'}
+                className="rounded-full border border-white/15 px-3.5 py-1.5 text-xs text-white/60 transition hover:text-white disabled:opacity-50"
               >
-                {location.name}
+                {geoStatus === 'asking' ? 'Locating…' : '📍 Use my location'}
               </button>
-            ))}
+            ) : geoStatus === 'granted' ? (
+              <span className="text-xs text-white/40">Sorted by distance to you</span>
+            ) : (
+              <span className="text-xs text-white/40">Location unavailable — showing all branches</span>
+            )}
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {branches.map((location) => {
+              const dist =
+                coords && location.latitude !== null && location.longitude !== null
+                  ? distanceKm(coords, { lat: location.latitude, lng: location.longitude })
+                  : null;
+              return (
+                <button
+                  key={location.id}
+                  type="button"
+                  onClick={() => setLocationId(location.id)}
+                  className={chip(locationId === location.id)}
+                >
+                  {location.name}
+                  {dist !== null ? <span className="ml-1.5 text-white/40">· {dist.toFixed(1)} km</span> : null}
+                </button>
+              );
+            })}
           </div>
           {needsWashBay && branches.length < locations.length ? (
             <p className="mt-3 text-xs text-white/40">

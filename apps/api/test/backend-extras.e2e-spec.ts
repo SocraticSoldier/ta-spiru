@@ -320,4 +320,16 @@ describe('Service photos, barber POS, reschedule, leaderboard & birthday coupon 
     const noMatch = await http.get('/api/v1/customers').query({ q: 'Katrina Nonexistent' }).set(auth(adminToken)).expect(200);
     expect(noMatch.body.some((c: { id: string }) => c.id === reg.body.user.id)).toBe(false);
   });
+
+  it('exposes real branch coordinates for the client-side distance sort', async () => {
+    const list = await http.get('/api/v1/locations').expect(200);
+    const naxxar = list.body.find((l: { slug: string }) => l.slug === 'naxxar');
+    expect(naxxar.latitude).toEqual(expect.any(Number));
+    expect(naxxar.longitude).toEqual(expect.any(Number));
+    // Sanity-check it is really somewhere in Malta, not a placeholder like 0,0.
+    expect(naxxar.latitude).toBeGreaterThan(35.7);
+    expect(naxxar.latitude).toBeLessThan(36.1);
+    expect(naxxar.longitude).toBeGreaterThan(14.1);
+    expect(naxxar.longitude).toBeLessThan(14.6);
+  });
 });

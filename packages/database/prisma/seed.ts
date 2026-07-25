@@ -22,15 +22,18 @@ interface BranchSeed {
   barberOperated?: boolean;
   /** Customers can join a virtual FIFO queue from their account. */
   virtualQueue?: boolean;
+  /** Town-centre coordinates — enough precision to sort branches by distance. */
+  latitude: number;
+  longitude: number;
 }
 
 const BRANCHES: readonly BranchSeed[] = [
-  { slug: 'naxxar', name: 'Naxxar', address: 'Flagship Barbershop, Naxxar', chairs: 4, bays: 0 },
-  { slug: 'pama', name: 'Pama', address: 'Pama Shopping Village, Mosta', chairs: 3, bays: 0, barberOperated: true, virtualQueue: true },
-  { slug: 'san-gwann', name: 'San Ġwann', address: 'San Ġwann', chairs: 3, bays: 0, barberOperated: true },
+  { slug: 'naxxar', name: 'Naxxar', address: 'Flagship Barbershop, Naxxar', chairs: 4, bays: 0, latitude: 35.9122, longitude: 14.4394 },
+  { slug: 'pama', name: 'Pama', address: 'Pama Shopping Village, Mosta', chairs: 3, bays: 0, barberOperated: true, virtualQueue: true, latitude: 35.9088, longitude: 14.4256 },
+  { slug: 'san-gwann', name: 'San Ġwann', address: 'San Ġwann', chairs: 3, bays: 0, barberOperated: true, latitude: 35.9089, longitude: 14.4633 },
   // Fgura: barbershop + the car wash / detailing centre next door on Zabbar Road.
-  { slug: 'fgura', name: 'Fgura', address: 'Barbershop & Car Wash, Zabbar Road, Fgura', chairs: 2, bays: 2 },
-  { slug: 'san-giljan', name: "San Ġiljan – St George's Mall", address: "St George's Mall, San Ġiljan", chairs: 3, bays: 0, barberOperated: true },
+  { slug: 'fgura', name: 'Fgura', address: 'Barbershop & Car Wash, Zabbar Road, Fgura', chairs: 2, bays: 2, latitude: 35.8747, longitude: 14.5223 },
+  { slug: 'san-giljan', name: "San Ġiljan – St George's Mall", address: "St George's Mall, San Ġiljan", chairs: 3, bays: 0, barberOperated: true, latitude: 35.9203, longitude: 14.4881 },
 ];
 
 interface ServiceSeed {
@@ -234,6 +237,8 @@ const main = async (): Promise<void> => {
       update: {
         name: branch.name,
         address: branch.address,
+        latitude: branch.latitude,
+        longitude: branch.longitude,
         isBarberOperated: branch.barberOperated ?? false,
         virtualQueueEnabled: branch.virtualQueue ?? false,
       },
@@ -241,6 +246,8 @@ const main = async (): Promise<void> => {
         slug: branch.slug,
         name: branch.name,
         address: branch.address,
+        latitude: branch.latitude,
+        longitude: branch.longitude,
         isBarberOperated: branch.barberOperated ?? false,
         virtualQueueEnabled: branch.virtualQueue ?? false,
       },

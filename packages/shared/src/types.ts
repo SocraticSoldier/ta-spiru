@@ -52,6 +52,8 @@ export interface LocationSummary {
   bayCount: number;
   /** No reception desk — a shared screen unlocks with a barber's station PIN instead. */
   isBarberOperated: boolean;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 export interface RevenueSplitLine {
