@@ -236,6 +236,8 @@ export const BookingWizard = ({ initialStream }: { initialStream?: string }): JS
   }
 
   if (phase === 'done' && result && result.status === 'booked') {
+    const bookedLocation = locations.find((location) => location.id === locationId);
+    const mapQuery = bookedLocation ? `${bookedLocation.name}, ${bookedLocation.address}` : null;
     return (
       <motion.div
         initial={{ opacity: 0, y: 16 }}
@@ -256,6 +258,30 @@ export const BookingWizard = ({ initialStream }: { initialStream?: string }): JS
           Payment reference <span className="font-mono text-white/70">{result.paymentReference}</span>.
           Your booking is held as pending and confirms the moment Trust Payments settles the charge.
         </p>
+        {bookedLocation && mapQuery ? (
+          <div className="mx-auto mt-6 max-w-md rounded-xl border border-white/10 bg-graphite-deep/60 p-4">
+            <p className="font-medium">{bookedLocation.name}</p>
+            <p className="mt-0.5 text-sm text-white/50">{bookedLocation.address}</p>
+            <div className="mt-3 flex justify-center gap-3 text-sm">
+              <a
+                href={`https://waze.com/ul?q=${encodeURIComponent(mapQuery)}&navigate=yes`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-lg border border-white/15 px-4 py-1.5 text-white/70 transition hover:text-white"
+              >
+                Open in Waze
+              </a>
+              <a
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-lg border border-white/15 px-4 py-1.5 text-white/70 transition hover:text-white"
+              >
+                Open in Google Maps
+              </a>
+            </div>
+          </div>
+        ) : null}
         <div className="mt-8 flex justify-center gap-3">
           <Link href="/account" className="rounded-lg bg-bronze px-5 py-2.5 font-medium text-graphite-deep transition hover:bg-bronze-light">
             My bookings
