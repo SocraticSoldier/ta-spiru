@@ -263,4 +263,42 @@ describe('Service photos, barber POS, reschedule, leaderboard & birthday coupon 
 
     await prisma.appointment.updateMany({ where: { id: { in: [kept.body.id, cancelled.body.id] } }, data: { status: 'CANCELLED' } });
   });
+
+  it('redeems a voucher code at the till, tracks its redemption count, and blocks reuse once exhausted', async () => {
+    const code = `E2ETILL${Date.now()}`;
+    await http
+      .post('/api/v1/coupons')
+      .set(auth(adminToken))
+      .send({ code, kind: 'AMOUNT', value: 500, maxRedemptions: 1 })
+      .expect(201);
+
+    const product = await prisma.product.findFirstOrThrow({ where: { sku: 'TS-BEARD-OIL' } });
+    const sale = await http
+      .post('/api/v1/orders/pos')
+      .set(auth(louisToken))
+      .send({ locationId: naxxarId, items: [{ productId: product.id, quantity: 1 }], couponCode: code })
+      .expect(201);
+    expect(sale.body.discountCents).toBe(500);
+    expect(sale.body.totalCents).toBe(product.priceCents - 500);
+    // Split ledger tags must still sum exactly to the discounted charge — the
+    // payment intent would have rejected the sale (400) otherwise.
+    expect(sale.body.paymentIntent.amountCents).toBe(product.priceCents - 500);
+
+    const order = await prisma.order.findUniqueOrThrow({ where: { id: sale.body.orderId } });
+    expect(order.couponCode).toBe(code.toUpperCase());
+    expect(order.discountCents).toBe(500);
+
+    const list = await http.get('/api/v1/coupons').set(auth(adminToken)).expect(200);
+    const row = list.body.find((c: { code: string }) => c.code === code.toUpperCase());
+    expect(row.redemptions).toBe(1);
+
+    // The code was capped at one redemption and is now exhausted.
+    await http
+      .post('/api/v1/orders/pos')
+      .set(auth(louisToken))
+      .send({ locationId: naxxarId, items: [{ productId: product.id, quantity: 1 }], couponCode: code })
+      .expect(400);
+
+    await prisma.order.delete({ where: { id: sale.body.orderId } });
+  });
 });

@@ -8,6 +8,7 @@ import {
 import { LedgerTag, OrderChannel, PaymentChannel, Product } from '@ta-spiru/database';
 import { EcomCheckoutResponse, OrderRow, PosCheckoutResponse } from '@ta-spiru/shared';
 import { AuthenticatedUser } from '../auth/interfaces/auth.interfaces';
+import { CouponsService } from '../coupons/coupons.service';
 import { TrustPaymentsService } from '../payments/trust-payments.service';
 import { SplitLedgerTagInput } from '../payments/interfaces/trust-payments.interfaces';
 import { PrismaService } from '../prisma/prisma.service';
@@ -26,13 +27,26 @@ export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly trustPaymentsService: TrustPaymentsService,
+    private readonly couponsService: CouponsService,
   ) {}
 
   /** In-store POS checkout: creates the order and opens the terminal payment intent. */
   async createPosOrder(dto: CreatePosOrderDto, actor: AuthenticatedUser): Promise<PosCheckoutResponse> {
     try {
       const priced = await this.priceItems(dto.items, dto.locationId);
-      const totalCents = priced.reduce((sum, item) => sum + item.lineTotalCents, 0);
+      const subtotalCents = priced.reduce((sum, item) => sum + item.lineTotalCents, 0);
+
+      let couponCode: string | null = null;
+      let discountCents = 0;
+      if (dto.couponCode) {
+        const redeemed = await this.couponsService.redeem(dto.couponCode, subtotalCents, dto.locationId, actor);
+        couponCode = redeemed.code;
+        discountCents = redeemed.discountCents;
+      }
+      const totalCents = subtotalCents - discountCents;
+      if (totalCents <= 0) {
+        throw new BadRequestException('The discount cannot cover the full sale');
+      }
 
       const order = await this.prisma.order.create({
         data: {
@@ -40,6 +54,8 @@ export class OrdersService {
           customerId: dto.customerId ?? null,
           channel: OrderChannel.POS,
           totalCents,
+          couponCode,
+          discountCents,
           items: {
             create: priced.map((item) => ({
               productId: item.product.id,
@@ -54,12 +70,12 @@ export class OrdersService {
       const paymentIntent = await this.trustPaymentsService.createPaymentIntent({
         amountCents: totalCents,
         channel: PaymentChannel.POS_TERMINAL,
-        splitLedgerTags: this.buildSplits(priced, dto.locationId),
+        splitLedgerTags: this.applyDiscount(this.buildSplits(priced, dto.locationId), subtotalCents, discountCents),
         customerId: dto.customerId ?? actor.id,
         orderIds: [order.id],
       });
 
-      return { orderId: order.id, totalCents, paymentIntent };
+      return { orderId: order.id, totalCents, discountCents, paymentIntent };
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
@@ -194,5 +210,27 @@ export class OrdersService {
       totals.set(item.product.ledgerTag, (totals.get(item.product.ledgerTag) ?? 0) + item.lineTotalCents);
     }
     return [...totals.entries()].map(([tag, amountCents]) => ({ tag, amountCents, locationId }));
+  }
+
+  /** Scales ledger splits down proportionally so they still sum exactly to the discounted total. */
+  protected applyDiscount(
+    splits: readonly SplitLedgerTagInput[],
+    subtotalCents: number,
+    discountCents: number,
+  ): SplitLedgerTagInput[] {
+    if (discountCents <= 0) return [...splits];
+    const chargedCents = subtotalCents - discountCents;
+    const scaled = splits.map((split) => ({
+      ...split,
+      amountCents: Math.floor((split.amountCents * chargedCents) / subtotalCents),
+    }));
+    let remainder = chargedCents - scaled.reduce((sum, split) => sum + split.amountCents, 0);
+    const byLargest = [...scaled].sort((a, b) => b.amountCents - a.amountCents);
+    for (const split of byLargest) {
+      if (remainder <= 0) break;
+      split.amountCents += 1;
+      remainder -= 1;
+    }
+    return scaled;
   }
 }

@@ -750,6 +750,9 @@ model Order {
   status     OrderStatus  @default(PENDING_PAYMENT)
   totalCents Int
 
+  couponCode    String? // uppercased code applied at checkout, if any
+  discountCents Int     @default(0)
+
   transactionId String?
   transaction   Transaction? @relation(fields: [transactionId], references: [id])
   items         OrderItem[]

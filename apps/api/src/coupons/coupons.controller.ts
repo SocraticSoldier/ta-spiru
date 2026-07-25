@@ -33,6 +33,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { AuthenticatedUser } from '../auth/interfaces/auth.interfaces';
 import { PrismaService } from '../prisma/prisma.service';
+import { CouponsService } from './coupons.service';
 
 const POINT_VALUE_KEY = 'loyalty.pointValueCents';
 const DEFAULT_POINT_VALUE_CENTS = 5; // 100 points = €5
@@ -118,7 +119,10 @@ export interface CouponRow {
 
 @Controller('coupons')
 export class CouponsController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly couponsService: CouponsService,
+  ) {}
 
   /** Admin list of every code. */
   @Get()
@@ -196,8 +200,9 @@ export class CouponsController {
   }
 
   /**
-   * Check a code at the till / checkout: returns the discount it grants on the
-   * given amount. Redemption counting happens when the sale settles.
+   * Applies a code at the till / checkout: returns the discount it grants on
+   * the given amount and claims one redemption. There is no separate dry-run
+   * — calling this spends the code, same as handing over a paper voucher.
    */
   @Post('validate')
   @UseGuards(JwtAuthGuard)
@@ -205,33 +210,7 @@ export class CouponsController {
     @Body() dto: ValidateCouponDto,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<{ code: string; discountCents: number; lowPeakOnly: boolean }> {
-    try {
-      const c = await this.prisma.coupon.findUnique({ where: { code: dto.code.toUpperCase() } });
-      const now = new Date();
-      if (!c || !c.isActive) throw new BadRequestException('That code is not valid');
-      if (c.validFrom && now < c.validFrom) throw new BadRequestException('That code is not active yet');
-      if (c.validUntil && now > c.validUntil) throw new BadRequestException('That code has expired');
-      if (c.maxRedemptions !== null && c.redemptions >= c.maxRedemptions) {
-        throw new BadRequestException('That code has been fully redeemed');
-      }
-      if (c.locationId && dto.locationId && c.locationId !== dto.locationId) {
-        throw new BadRequestException('That code is not valid at this branch');
-      }
-      if (c.isBirthdayReward) {
-        const customer = await this.prisma.user.findUnique({ where: { id: user.id }, select: { birthday: true } });
-        if (!customer?.birthday || customer.birthday.getUTCMonth() !== now.getUTCMonth()) {
-          throw new BadRequestException('That code only applies during your birthday month');
-        }
-      }
-      const discountCents =
-        c.kind === CouponKind.PERCENT
-          ? Math.floor((dto.amountCents * c.value) / 100)
-          : Math.min(c.value, dto.amountCents);
-      return { code: c.code, discountCents, lowPeakOnly: c.lowPeakOnly };
-    } catch (error) {
-      if (error instanceof HttpException) throw error;
-      throw new InternalServerErrorException('Failed to validate the code');
-    }
+    return this.couponsService.redeem(dto.code, dto.amountCents, dto.locationId, user);
   }
 
   /** What a loyalty point is worth (owner-tunable; default 100 pts = €5). */

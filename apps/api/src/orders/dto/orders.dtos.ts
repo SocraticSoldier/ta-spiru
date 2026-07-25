@@ -31,6 +31,10 @@ export class CreatePosOrderDto {
   @IsString()
   customerId?: string;
 
+  @IsOptional()
+  @IsString()
+  couponCode?: string;
+
   @IsArray()
   @ArrayNotEmpty()
   @ValidateNested({ each: true })

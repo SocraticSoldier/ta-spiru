@@ -69,6 +69,7 @@ export const MyDayClient = ({
   const [posBusy, setPosBusy] = useState(false);
   const [posError, setPosError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<PosCheckoutResponse | null>(null);
+  const [couponCode, setCouponCode] = useState('');
 
   useEffect(() => {
     const tick = setInterval(() => setNow(Date.now()), 20_000);
@@ -186,6 +187,7 @@ export const MyDayClient = ({
       body: JSON.stringify({
         locationId,
         items: cartLines.map((line) => ({ productId: line.product.productId, quantity: line.qty })),
+        couponCode: couponCode.trim() || undefined,
       }),
     });
     setPosBusy(false);
@@ -197,6 +199,7 @@ export const MyDayClient = ({
     const result = (await res.json()) as PosCheckoutResponse;
     setReceipt(result);
     setCart({});
+    setCouponCode('');
   };
 
   return (
@@ -272,7 +275,9 @@ export const MyDayClient = ({
             {receipt ? (
               <div className="rounded-lg border border-emerald-400/25 bg-emerald-500/10 p-3 text-sm text-emerald-100">
                 <p>
-                  Sale recorded — {formatEuro(receipt.totalCents)}. Ref {receipt.paymentIntent.paymentReference}.
+                  Sale recorded — {formatEuro(receipt.totalCents)}
+                  {receipt.discountCents > 0 ? ` (${formatEuro(receipt.discountCents)} off)` : ''}. Ref{' '}
+                  {receipt.paymentIntent.paymentReference}.
                 </p>
                 <p className="mt-1 text-xs text-emerald-200/70">Hand the terminal to the client to complete payment.</p>
                 <button
@@ -323,6 +328,16 @@ export const MyDayClient = ({
                         </div>
                       </div>
                     ))}
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        value={couponCode}
+                        onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                        disabled={posBusy}
+                        placeholder="Voucher / gift card code"
+                        className="w-full rounded-md border border-white/10 bg-graphite-deep px-2 py-1 text-xs uppercase text-white placeholder:normal-case placeholder:text-white/30 outline-none focus:border-bronze"
+                      />
+                    </div>
                     <div className="mt-1 flex items-center justify-between border-t border-white/5 pt-2 text-sm font-medium">
                       <span>Total</span>
                       <span className="text-bronze-light">{formatEuro(cartTotalCents)}</span>

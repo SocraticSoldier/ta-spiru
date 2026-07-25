@@ -110,6 +110,7 @@ export interface KioskStaffMember {
 export interface PosCheckoutResponse {
   orderId: string;
   totalCents: number;
+  discountCents: number;
   paymentIntent: PaymentIntentResponse;
 }
 

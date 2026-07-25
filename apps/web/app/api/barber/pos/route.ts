@@ -4,6 +4,7 @@ import { ApiError, apiFetch } from '@/lib/api';
 interface Body {
   locationId?: string;
   items?: { productId: string; quantity: number }[];
+  couponCode?: string;
 }
 
 export const POST = async (request: Request): Promise<NextResponse> => {
@@ -14,7 +15,7 @@ export const POST = async (request: Request): Promise<NextResponse> => {
   try {
     const result = await apiFetch('/orders/pos', {
       method: 'POST',
-      body: JSON.stringify({ locationId: body.locationId, items: body.items }),
+      body: JSON.stringify({ locationId: body.locationId, items: body.items, couponCode: body.couponCode || undefined }),
     });
     return NextResponse.json(result);
   } catch (error) {
