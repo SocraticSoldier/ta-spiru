@@ -411,6 +411,8 @@ model Coupon {
   redemptions    Int        @default(0)
   isActive       Boolean    @default(true)
   notes          String?
+  // Auto-gated on the requesting customer's birthday month instead of a fixed window.
+  isBirthdayReward Boolean  @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

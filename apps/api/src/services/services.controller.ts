@@ -225,6 +225,8 @@ export class ServicesController {
       priceCents: service.priceCents,
       isComboEligible: service.isComboEligible,
       isQuoteOnly: service.isQuoteOnly,
+      description: service.description,
+      photoUrl: service.photoUrl,
       tiers: service.tiers
         .slice()
         .sort((a, b) => TIER_ORDER[a.seniority] - TIER_ORDER[b.seniority])

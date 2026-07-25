@@ -293,6 +293,94 @@ export class TeamController {
     }
   }
 
+  /**
+   * Cross-barber leaderboard for a month: most bookings, most retained and
+   * most new clients. Scoped to what's actually attributable in the data —
+   * there's no seller/tip attribution on retail sales, so those categories
+   * are left out rather than guessed at.
+   */
+  @Get('performance/leaderboard')
+  @Roles(Role.MANAGER)
+  async leaderboard(@Query('from') from?: string, @Query('to') to?: string): Promise<Record<string, unknown>> {
+    try {
+      const now = new Date();
+      const start = from
+        ? new Date(`${from}T00:00:00.000Z`)
+        : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+      const end = to ? new Date(`${to}T23:59:59.999Z`) : now;
+
+      const barbers = await this.prisma.user.findMany({
+        where: { role: Role.BARBER, isActive: true },
+        select: { id: true, firstName: true, lastName: true },
+      });
+      const empty = {
+        from: start.toISOString().slice(0, 10),
+        to: end.toISOString().slice(0, 10),
+        mostBookings: null,
+        mostRetained: null,
+        mostNewClients: null,
+      };
+      if (!barbers.length) return empty;
+      const barberIds = barbers.map((b) => b.id);
+
+      const [appts, earlier] = await Promise.all([
+        this.prisma.appointment.findMany({
+          where: { barberId: { in: barberIds }, startsAt: { gte: start, lte: end } },
+          select: { barberId: true, customerId: true, status: true },
+        }),
+        this.prisma.appointment.findMany({
+          where: { barberId: { in: barberIds }, startsAt: { lt: start } },
+          select: { barberId: true, customerId: true },
+          distinct: ['barberId', 'customerId'],
+        }),
+      ]);
+      const earlierSet = new Set(earlier.map((e) => `${e.barberId}:${e.customerId}`));
+
+      const byBarber = new Map<string, { bookings: number; completed: Set<string> }>();
+      for (const b of barbers) byBarber.set(b.id, { bookings: 0, completed: new Set() });
+      for (const a of appts) {
+        if (!a.barberId) continue;
+        const row = byBarber.get(a.barberId);
+        if (!row) continue;
+        row.bookings += 1;
+        if (a.status === AppointmentStatus.COMPLETED) row.completed.add(a.customerId);
+      }
+
+      let mostBookings: { barberId: string; value: number } | null = null;
+      let mostRetained: { barberId: string; value: number } | null = null;
+      let mostNewClients: { barberId: string; value: number } | null = null;
+      for (const [barberId, row] of byBarber) {
+        if (!mostBookings || row.bookings > mostBookings.value) mostBookings = { barberId, value: row.bookings };
+        let retained = 0;
+        let fresh = 0;
+        for (const customerId of row.completed) {
+          if (earlierSet.has(`${barberId}:${customerId}`)) retained += 1;
+          else fresh += 1;
+        }
+        if (!mostRetained || retained > mostRetained.value) mostRetained = { barberId, value: retained };
+        if (!mostNewClients || fresh > mostNewClients.value) mostNewClients = { barberId, value: fresh };
+      }
+
+      const nameOf = (id: string): string => {
+        const b = barbers.find((x) => x.id === id);
+        return b ? fullName(b.firstName, b.lastName) : 'Unknown';
+      };
+      const toEntry = (e: { barberId: string; value: number } | null) =>
+        e && e.value > 0 ? { barberId: e.barberId, barberName: nameOf(e.barberId), value: e.value } : null;
+
+      return {
+        from: empty.from,
+        to: empty.to,
+        mostBookings: toEntry(mostBookings),
+        mostRetained: toEntry(mostRetained),
+        mostNewClients: toEntry(mostNewClients),
+      };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException('Failed to build the leaderboard');
+    }
+  }
+
   // ── Leave & sick ────────────────────────────────────────────────────────
 
   /** Staff request their own days; managers may file for anyone. */

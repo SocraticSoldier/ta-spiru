@@ -15,7 +15,7 @@ export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
   @Post('pos')
-  @Roles(Role.MANAGER, Role.RECEPTIONIST)
+  @Roles(Role.MANAGER, Role.RECEPTIONIST, Role.BARBER, Role.WASH_ATTENDANT)
   createPosOrder(
     @Body() dto: CreatePosOrderDto,
     @CurrentUser() user: AuthenticatedUser,

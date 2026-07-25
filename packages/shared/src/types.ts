@@ -195,6 +195,8 @@ export interface ServiceSummary {
   isQuoteOnly: boolean;
   /** Junior/Normal/Senior price bands for barber haircuts (empty otherwise). */
   tiers: ServiceTierSummary[];
+  description: string | null;
+  photoUrl: string | null;
 }
 
 /** A barber for the customer-facing booking screen. */
@@ -247,6 +249,8 @@ export interface BarberServiceSummary {
   durationMin: number;
   maxDaily: number | null;
   isComboEligible: boolean;
+  description: string | null;
+  photoUrl: string | null;
 }
 
 export type LoyaltyTierName = 'BRONZE' | 'SILVER' | 'GOLD';

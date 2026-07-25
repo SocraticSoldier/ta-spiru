@@ -809,6 +809,118 @@ export class BookingsService {
   }
 
   /**
+   * Staff move a client's appointment to a new time (and optionally a new
+   * barber), re-checking the same conflicts a fresh booking would face.
+   * Scoped to single barber-service appointments — combo visits and wash
+   * bookings keep their own dedicated flows.
+   */
+  async rescheduleBooking(
+    appointmentId: string,
+    dto: { startsAt: string; barberId?: string },
+    actor: { id: string; role: Role },
+  ): Promise<AppointmentRow> {
+    try {
+      const appointment = await this.prisma.appointment.findUnique({
+        where: { id: appointmentId },
+        include: { service: true },
+      });
+      if (!appointment) {
+        throw new NotFoundException(`Booking ${appointmentId} not found`);
+      }
+      if (appointment.comboGroupId) {
+        throw new BadRequestException('Combo visits cannot be rescheduled from this endpoint');
+      }
+      if (appointment.service.kind !== ServiceKind.BARBER) {
+        throw new BadRequestException('Only barber appointments can be rescheduled here');
+      }
+      if (!ACTIVE_STATUSES.includes(appointment.status)) {
+        throw new ConflictException(`A ${appointment.status} booking cannot be rescheduled`);
+      }
+      if (actor.role === Role.BARBER && appointment.barberId !== actor.id) {
+        throw new NotFoundException(`Booking ${appointmentId} not found`);
+      }
+
+      const startsAt = new Date(dto.startsAt);
+      if (Number.isNaN(startsAt.getTime()) || startsAt <= new Date()) {
+        throw new BadRequestException('startsAt must be a future ISO-8601 timestamp');
+      }
+      const barberId = dto.barberId ?? appointment.barberId;
+      if (!barberId) {
+        throw new BadRequestException('barberId is required');
+      }
+
+      const resolved = await this.resolveBarberPricing(appointment.service, barberId);
+      const endsAt = addMinutes(startsAt, resolved.durationMin);
+
+      const updated = await this.prisma.$transaction(
+        async (tx) => {
+          const blockConflict = await tx.timeBlock.findFirst({
+            where: {
+              locationId: appointment.locationId,
+              startsAt: { lt: endsAt },
+              endsAt: { gt: startsAt },
+              OR: [{ barberId: null }, { barberId }],
+            },
+            select: { id: true },
+          });
+          if (blockConflict) {
+            throw new ConflictException('This time is blocked out at the selected branch');
+          }
+          await this.assertDailyCap(tx, barberId, appointment.serviceId, startsAt, resolved.maxDaily);
+          const conflict = await tx.appointment.findFirst({
+            where: {
+              id: { not: appointment.id },
+              barberId,
+              status: { in: [...ACTIVE_STATUSES] },
+              startsAt: { lt: endsAt },
+              endsAt: { gt: startsAt },
+            },
+            select: { id: true },
+          });
+          if (conflict) {
+            throw new ConflictException('Selected barber is no longer available for this slot');
+          }
+          return tx.appointment.update({
+            where: { id: appointment.id },
+            data: {
+              barberId,
+              startsAt,
+              endsAt,
+              lockedUntil: endsAt,
+              priceCentsSnapshot: resolved.priceCents,
+            },
+            include: {
+              customer: { select: { firstName: true, lastName: true } },
+              service: { select: { name: true, kind: true } },
+              barber: { select: { firstName: true, lastName: true } },
+              resource: { select: { name: true } },
+            },
+          });
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+
+      return {
+        id: updated.id,
+        startsAt: updated.startsAt.toISOString(),
+        endsAt: updated.endsAt.toISOString(),
+        status: updated.status,
+        customerName: fullName(updated.customer.firstName, updated.customer.lastName),
+        serviceName: updated.service.name,
+        serviceKind: updated.service.kind,
+        barberName: updated.barber ? fullName(updated.barber.firstName, updated.barber.lastName) : null,
+        resourceName: updated.resource?.name ?? null,
+        comboGroupId: updated.comboGroupId,
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to reschedule the booking');
+    }
+  }
+
+  /**
    * Resolves a branch's opening window for a local date, in UTC. Returns null
    * when the branch is closed; `fullDay` widens to the whole local day so the
    * calendar also shows out-of-hours records.

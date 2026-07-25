@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { Role } from '@ta-spiru/database';
-import { AddServiceDto, UpdateAppointmentStatusDto } from './dto/kiosk.dtos';
+import { AddServiceDto, RescheduleBookingDto, UpdateAppointmentStatusDto } from './dto/kiosk.dtos';
 import { AppointmentRow, AvailabilitySlot, ComboSlot, MyBookingRow } from '@ta-spiru/shared';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -53,6 +53,18 @@ export class BookingsController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<{ id: string; status: string }> {
     return this.bookingsService.setStatus(appointmentId, dto.status, user);
+  }
+
+  /** Reception/kiosk: move a client to a new time and/or barber. */
+  @Patch(':appointmentId/reschedule')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.MANAGER, Role.RECEPTIONIST, Role.BARBER)
+  reschedule(
+    @Param('appointmentId') appointmentId: string,
+    @Body() dto: RescheduleBookingDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<AppointmentRow> {
+    return this.bookingsService.rescheduleBooking(appointmentId, dto, user);
   }
 
   /** Barber kiosk: add a service to the client in the chair. */

@@ -1,5 +1,5 @@
 import { AppointmentStatus } from '@ta-spiru/database';
-import { IsBoolean, IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsEnum, IsISO8601, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 /** Statuses staff may set from the kiosk / reception screens. */
 export const SETTABLE_STATUSES = [
@@ -29,4 +29,14 @@ export class AddServiceDto {
   @IsOptional()
   @IsBoolean()
   acceptOverlap?: boolean;
+}
+
+/** Move a booking to a new time and, optionally, a new barber. */
+export class RescheduleBookingDto {
+  @IsISO8601()
+  startsAt!: string;
+
+  @IsOptional()
+  @IsString()
+  barberId?: string;
 }

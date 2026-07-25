@@ -441,13 +441,13 @@ const main = async (): Promise<void> => {
 
   // Starter discount codes (the coupons section manages these in the admin).
   const coupons = [
-    { code: 'BLACKFRIDAY10', kind: CouponKind.PERCENT, value: 10, notes: 'Site-wide campaign example' },
-    { code: 'BIRTHDAY5', kind: CouponKind.AMOUNT, value: 500, notes: 'Birthday gift — €5 off' },
+    { code: 'BLACKFRIDAY10', kind: CouponKind.PERCENT, value: 10, notes: 'Site-wide campaign example', isBirthdayReward: false },
+    { code: 'BIRTHDAY5', kind: CouponKind.AMOUNT, value: 500, notes: 'Birthday gift — €5 off', isBirthdayReward: true },
   ];
   for (const c of coupons) {
     await prisma.coupon.upsert({
       where: { code: c.code },
-      update: {},
+      update: { isBirthdayReward: c.isBirthdayReward },
       create: c,
     });
   }

@@ -227,6 +227,8 @@ export class BarbersController {
           durationMin: resolved.durationMin,
           maxDaily: resolved.maxDaily,
           isComboEligible: svc.isComboEligible,
+          description: svc.description,
+          photoUrl: svc.photoUrl,
         });
       }
       return out;

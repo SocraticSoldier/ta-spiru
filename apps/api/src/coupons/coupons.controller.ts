@@ -27,9 +27,11 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { AuthenticatedUser } from '../auth/interfaces/auth.interfaces';
 import { PrismaService } from '../prisma/prisma.service';
 
 const POINT_VALUE_KEY = 'loyalty.pointValueCents';
@@ -111,6 +113,7 @@ export interface CouponRow {
   redemptions: number;
   isActive: boolean;
   notes: string | null;
+  isBirthdayReward: boolean;
 }
 
 @Controller('coupons')
@@ -198,7 +201,10 @@ export class CouponsController {
    */
   @Post('validate')
   @UseGuards(JwtAuthGuard)
-  async validate(@Body() dto: ValidateCouponDto): Promise<{ code: string; discountCents: number; lowPeakOnly: boolean }> {
+  async validate(
+    @Body() dto: ValidateCouponDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<{ code: string; discountCents: number; lowPeakOnly: boolean }> {
     try {
       const c = await this.prisma.coupon.findUnique({ where: { code: dto.code.toUpperCase() } });
       const now = new Date();
@@ -210,6 +216,12 @@ export class CouponsController {
       }
       if (c.locationId && dto.locationId && c.locationId !== dto.locationId) {
         throw new BadRequestException('That code is not valid at this branch');
+      }
+      if (c.isBirthdayReward) {
+        const customer = await this.prisma.user.findUnique({ where: { id: user.id }, select: { birthday: true } });
+        if (!customer?.birthday || customer.birthday.getUTCMonth() !== now.getUTCMonth()) {
+          throw new BadRequestException('That code only applies during your birthday month');
+        }
       }
       const discountCents =
         c.kind === CouponKind.PERCENT
@@ -266,6 +278,7 @@ export class CouponsController {
       redemptions: c.redemptions,
       isActive: c.isActive,
       notes: c.notes,
+      isBirthdayReward: c.isBirthdayReward,
     };
   }
 }
