@@ -109,6 +109,7 @@ export class LocationsService {
       timezone: location.timezone,
       chairCount: resources.filter((resource) => resource.kind === ResourceKind.BARBER_CHAIR).length,
       bayCount: resources.filter((resource) => resource.kind === ResourceKind.WASH_BAY).length,
+      isBarberOperated: location.isBarberOperated,
     };
   }
 }

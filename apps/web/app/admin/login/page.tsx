@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { FormEvent, JSX } from 'react';
@@ -81,6 +82,13 @@ const LoginPage = (): JSX.Element => {
         >
           {submitting ? 'Signing in…' : 'Sign in'}
         </button>
+
+        <Link
+          href="/station-login"
+          className="mt-4 block text-center text-sm text-white/40 transition hover:text-white/70"
+        >
+          Barber-operated branch? Sign in with your station PIN →
+        </Link>
       </motion.form>
     </main>
   );

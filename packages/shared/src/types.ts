@@ -50,6 +50,8 @@ export interface LocationSummary {
   timezone: string;
   chairCount: number;
   bayCount: number;
+  /** No reception desk — a shared screen unlocks with a barber's station PIN instead. */
+  isBarberOperated: boolean;
 }
 
 export interface RevenueSplitLine {
