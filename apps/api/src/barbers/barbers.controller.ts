@@ -94,6 +94,7 @@ export class BarbersController {
         where: {
           role: Role.BARBER,
           isActive: true,
+          acceptsBookings: true,
           ...(locationId ? { locationId } : {}),
         },
         orderBy: [{ stationNo: 'asc' }, { firstName: 'asc' }],

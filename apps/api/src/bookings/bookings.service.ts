@@ -154,7 +154,7 @@ export class BookingsService {
 
       const [barbers, resources, appointments, blocks] = await Promise.all([
         this.prisma.user.findMany({
-          where: { role: Role.BARBER, locationId, isActive: true },
+          where: { role: Role.BARBER, locationId, isActive: true, acceptsBookings: true },
           select: {
             id: true,
             firstName: true,
@@ -424,7 +424,7 @@ export class BookingsService {
       const [barbers, resources, appointments, blocks] = await Promise.all([
         service.kind === ServiceKind.BARBER
           ? this.prisma.user.findMany({
-              where: { role: Role.BARBER, locationId: query.locationId, isActive: true },
+              where: { role: Role.BARBER, locationId: query.locationId, isActive: true, acceptsBookings: true },
               select: {
                 id: true,
                 firstName: true,
@@ -986,6 +986,28 @@ export class BookingsService {
           },
         }),
       ]);
+
+      // Alert the owner/managers the moment a barber changes a live appointment.
+      const [barber, admins] = await Promise.all([
+        this.prisma.user.findUnique({ where: { id: barberId }, select: { firstName: true, lastName: true } }),
+        this.prisma.user.findMany({
+          where: { role: { in: [Role.ADMIN, Role.MANAGER] }, isActive: true },
+          select: { id: true },
+        }),
+      ]);
+      if (admins.length > 0) {
+        const who = fullName(barber?.firstName ?? '', barber?.lastName ?? '');
+        await this.prisma.notification.createMany({
+          data: admins.map((a) => ({
+            userId: a.id,
+            kind: 'SERVICE_CHANGE',
+            title: `${who} added ${service.name}`,
+            body: `+${pricing.durationMin} min · ${(pricing.priceCents / 100).toFixed(2)} EUR${
+              nextBooking && dto.acceptOverlap ? ' · overlap accepted' : ''
+            }`,
+          })),
+        });
+      }
       return {
         visitGroupId,
         addedAppointmentId: added.id,

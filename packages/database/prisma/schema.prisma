@@ -192,6 +192,15 @@ model User {
   stationNo Int? // barber chair / station number (shown to customers too)
   photoUrl  String? // profile photo, shown on the customer booking screen
 
+  // Staff profile (mirrors the existing team-member page)
+  entrance           String? // e.g. "A" — which entrance their station uses
+  minQueueGapMin     Int? // minimum gap before the first queue client
+  acceptsBookings    Boolean   @default(true) // false = hidden from availability
+  offDays            Int[]     @default([]) // weekdays off, 0=Sunday … 6=Saturday
+  leaveAllowanceDays Int       @default(24) // annual leave allowance
+  employmentDate     DateTime?
+  terminationDate    DateTime?
+
   shifts               Shift[]
   timeEntries          TimeEntry[]
   barberAppointments   Appointment[]   @relation("AppointmentBarber")
@@ -209,6 +218,8 @@ model User {
   serviceChanges       ServiceChangeLog[] @relation("ServiceChangeActor")
   vehicles             Vehicle[]          @relation("CustomerVehicles")
   accountMembers       AccountMember[]    @relation("AccountMembers")
+  leaveRequests        LeaveRequest[]     @relation("StaffLeave")
+  notifications        Notification[]     @relation("UserNotifications")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -386,6 +397,51 @@ model AppSetting {
   value String
 
   updatedAt DateTime @updatedAt
+}
+
+enum LeaveKind {
+  LEAVE
+  SICK
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  DECLINED
+}
+
+// A single day of leave or sick for a staff member. Balances on the team page
+// are computed from approved entries against the annual allowance.
+model LeaveRequest {
+  id     String      @id @default(cuid())
+  userId String
+  user   User        @relation("StaffLeave", fields: [userId], references: [id], onDelete: Cascade)
+  kind   LeaveKind
+  date   DateTime // the day (UTC midnight)
+  status LeaveStatus @default(PENDING)
+  notes  String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, date, kind])
+  @@index([userId, status])
+}
+
+// In-app notification centre: roster changes, leave decisions, service-change
+// alerts to admins. Mobile push transport plugs in on top of this feed.
+model Notification {
+  id     String    @id @default(cuid())
+  userId String
+  user   User      @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  kind   String // e.g. SERVICE_CHANGE | ROSTER | LEAVE
+  title  String
+  body   String?
+  readAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, readAt])
+  @@index([createdAt])
 }
 
 // A customer who wants a fully-booked barber on a given day. Reception works
