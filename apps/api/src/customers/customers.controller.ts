@@ -123,7 +123,7 @@ export class CustomersController {
    */
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.MANAGER)
+  @Roles(Role.MANAGER, Role.RECEPTIONIST)
   async search(
     @Query('q') q?: string,
     @Query('group') group?: string,

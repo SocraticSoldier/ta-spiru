@@ -190,6 +190,10 @@ describe('Reviews, customer profiles & returns (e2e)', () => {
     expect(staffGroup.body.some((c: { id: string }) => c.id === customerId)).toBe(true);
 
     await http.get('/api/v1/customers').set(auth(customerToken)).expect(403);
+
+    // Reception needs this to find a customer for an on-behalf booking.
+    const asReception = await http.get('/api/v1/customers').query({ q: 'George' }).set(auth(receptionToken)).expect(200);
+    expect(asReception.body.some((c: { id: string }) => c.id === customerId)).toBe(true);
   });
 
   it('flags the staff card on a loyalty scan so the internal discount can unlock', async () => {

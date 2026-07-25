@@ -33,6 +33,30 @@ export const createTimeBlock = async (formData: FormData): Promise<void> => {
   revalidatePath('/admin/calendar');
 };
 
+export const rescheduleBooking = async (formData: FormData): Promise<void> => {
+  const appointmentId = String(formData.get('appointmentId') ?? '');
+  const date = String(formData.get('date') ?? '');
+  const time = String(formData.get('time') ?? '');
+  const barberId = String(formData.get('barberId') ?? '');
+
+  if (!appointmentId || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) {
+    return;
+  }
+
+  try {
+    await apiFetch(`/bookings/${appointmentId}/reschedule`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        startsAt: maltaToUtc(date, time).toISOString(),
+        barberId: barberId || undefined,
+      }),
+    });
+  } catch {
+    return;
+  }
+  revalidatePath('/admin/calendar');
+};
+
 export const deleteTimeBlock = async (formData: FormData): Promise<void> => {
   const blockId = String(formData.get('blockId') ?? '');
   if (!blockId) {

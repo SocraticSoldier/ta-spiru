@@ -10,7 +10,15 @@ import type {
 import { apiFetch } from '@/lib/api';
 import { KIND_COLORS, locationColor } from '@/lib/colors';
 import { formatTimeMalta, maltaHour, shiftDate, todayMalta } from '@/lib/time';
-import { createTimeBlock, deleteTimeBlock } from './actions';
+import { createTimeBlock, deleteTimeBlock, rescheduleBooking } from './actions';
+
+/** HH:mm in Malta wall-clock time, for prefilling the reschedule time input. */
+const maltaHHmm = (iso: string): string =>
+  new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Malta', hourCycle: 'h23', hour: '2-digit', minute: '2-digit' }).format(
+    new Date(iso),
+  );
+
+const RESCHEDULABLE_STATUSES = new Set(['PENDING_PAYMENT', 'CONFIRMED', 'CHECKED_IN', 'IN_PROGRESS']);
 
 interface CalendarSearchParams {
   locationId?: string;
@@ -164,9 +172,13 @@ const CalendarPage = async ({
                 ))}
                 {hourEntries.map((entry) => {
                   const accent = KIND_COLORS[entry.serviceKind];
-                  return (
+                  const canReschedule =
+                    canManageBlocks &&
+                    entry.serviceKind === 'BARBER' &&
+                    !entry.comboGroupId &&
+                    RESCHEDULABLE_STATUSES.has(entry.status);
+                  const row = (
                     <div
-                      key={entry.id}
                       className="flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm"
                       style={{
                         background: accent.soft,
@@ -197,6 +209,46 @@ const CalendarPage = async ({
                         style={{ backgroundColor: STATUS_DOTS[entry.status] ?? '#9ca3af' }}
                       />
                     </div>
+                  );
+                  if (!canReschedule) {
+                    return <div key={entry.id}>{row}</div>;
+                  }
+                  return (
+                    <details key={entry.id} className="group">
+                      <summary className="cursor-pointer list-none">{row}</summary>
+                      <form
+                        action={rescheduleBooking}
+                        className="mt-1.5 flex flex-wrap items-end gap-2 rounded-lg border border-white/10 bg-graphite-deep/60 p-3 text-xs"
+                      >
+                        <input type="hidden" name="appointmentId" value={entry.id} />
+                        <label className="flex flex-col gap-1 text-white/50">
+                          Date
+                          <input
+                            name="date"
+                            type="date"
+                            defaultValue={date}
+                            required
+                            className="rounded-md border border-white/10 bg-graphite px-2 py-1 text-white outline-none focus:border-bronze"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1 text-white/50">
+                          Time
+                          <input
+                            name="time"
+                            type="time"
+                            defaultValue={maltaHHmm(entry.startsAt)}
+                            required
+                            className="rounded-md border border-white/10 bg-graphite px-2 py-1 text-white outline-none focus:border-bronze"
+                          />
+                        </label>
+                        <button
+                          type="submit"
+                          className="rounded-md bg-bronze px-3 py-1.5 font-medium text-graphite-deep transition hover:bg-bronze-light"
+                        >
+                          Move
+                        </button>
+                      </form>
+                    </details>
                   );
                 })}
               </div>
