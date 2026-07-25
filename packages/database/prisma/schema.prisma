@@ -151,6 +151,11 @@ model Location {
   timezone String  @default("Europe/Malta")
   isActive Boolean @default(true)
 
+  // Barber-operated outlets run a virtual, account-based FIFO queue instead of
+  // a reception desk; the in-store screen doubles as the barbers' station login.
+  virtualQueueEnabled Boolean @default(false)
+  isBarberOperated    Boolean @default(false)
+
   openingHours      OpeningHours[]
   users             User[]
   services          LocationService[]

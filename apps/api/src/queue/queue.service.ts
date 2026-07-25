@@ -56,6 +56,21 @@ export class QueueService {
         throw new BadRequestException(`Service ${dto.serviceId} not found or inactive`);
       }
 
+      // Customers only queue themselves where the virtual queue is switched on;
+      // staff-created walk-ins (no customerId) work at every branch.
+      if (customerId) {
+        const location = await this.prisma.location.findUnique({
+          where: { id: dto.locationId },
+          select: { virtualQueueEnabled: true },
+        });
+        if (!location) {
+          throw new BadRequestException(`Location ${dto.locationId} not found`);
+        }
+        if (!location.virtualQueueEnabled) {
+          throw new BadRequestException('This branch does not run a virtual queue');
+        }
+      }
+
       if (customerId) {
         const existing = await this.prisma.queueEntry.findFirst({
           where: {

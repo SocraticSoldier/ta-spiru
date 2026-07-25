@@ -1,4 +1,5 @@
 import { LeaveKind, LeaveStatus, Role, Seniority } from '@ta-spiru/database';
+import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
@@ -14,6 +15,7 @@ import {
   MaxLength,
   Max,
   Min,
+  ValidateNested,
 } from 'class-validator';
 
 /** Roles that can be created as staff from the team tab. */
@@ -166,4 +168,32 @@ export class CreateLeaveDto {
 export class DecideLeaveDto {
   @IsEnum(LeaveStatus)
   status!: LeaveStatus;
+}
+
+/** One working window on a day, in the branch's local wall-clock time. */
+export class ShiftWindowDto {
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'startsAt must be HH:mm' })
+  startsAt!: string;
+
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'endsAt must be HH:mm' })
+  endsAt!: string;
+}
+
+/**
+ * Replace a member's roster for one day. Two windows give the classic split
+ * shift (e.g. 08:30-13:15 and 13:45-19:00); an empty list clears the day.
+ */
+export class SetShiftsDto {
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'date must be formatted as YYYY-MM-DD' })
+  date!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  locationId!: string;
+
+  @IsArray()
+  @ArrayMaxSize(4)
+  @ValidateNested({ each: true })
+  @Type(() => ShiftWindowDto)
+  windows!: ShiftWindowDto[];
 }

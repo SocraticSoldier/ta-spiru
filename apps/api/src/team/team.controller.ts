@@ -23,10 +23,12 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { AuthenticatedUser } from '../auth/interfaces/auth.interfaces';
 import { fullName } from '../common/name.util';
 import { PrismaService } from '../prisma/prisma.service';
+import { zonedTimeToUtc } from '../bookings/utils/time.util';
 import {
   CreateLeaveDto,
   CreateTeamMemberDto,
   DecideLeaveDto,
+  SetShiftsDto,
   UpdateTeamMemberDto,
 } from './dto/team.dtos';
 
@@ -367,6 +369,74 @@ export class TeamController {
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException('Failed to update the leave request');
+    }
+  }
+
+  /**
+   * Set a member's working windows for one day. Two windows make the split
+   * shift the shop actually works (e.g. 08:30–13:15 and 13:45–19:00); the
+   * availability engine already treats each window as separately bookable.
+   */
+  @Post(':id/shifts')
+  @Roles(Role.MANAGER)
+  async setShifts(
+    @Param('id') id: string,
+    @Body() dto: SetShiftsDto,
+  ): Promise<{ date: string; windows: { startsAt: string; endsAt: string }[] }> {
+    try {
+      const [member, location] = await Promise.all([
+        this.prisma.user.findFirst({ where: { id, role: { in: [...STAFF_ROLES] } } }),
+        this.prisma.location.findUnique({ where: { id: dto.locationId }, select: { id: true, timezone: true } }),
+      ]);
+      if (!member) throw new NotFoundException('Team member not found');
+      if (!location) throw new NotFoundException('Branch not found');
+
+      const windows = dto.windows.map((w) => ({
+        startsAt: zonedTimeToUtc(dto.date, w.startsAt, location.timezone),
+        endsAt: zonedTimeToUtc(dto.date, w.endsAt, location.timezone),
+      }));
+      for (const w of windows) {
+        if (w.endsAt <= w.startsAt) {
+          throw new BadRequestException('A shift must end after it starts');
+        }
+      }
+      windows.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+      windows.reduce<Date | null>((previousEnd, window) => {
+        if (previousEnd && window.startsAt < previousEnd) {
+          throw new BadRequestException('Shift windows must not overlap');
+        }
+        return window.endsAt;
+      }, null);
+
+      const dayStart = new Date(`${dto.date}T00:00:00.000Z`);
+      const dayEnd = new Date(dayStart.getTime() + 48 * 60 * 60 * 1000);
+      await this.prisma.$transaction([
+        this.prisma.shift.deleteMany({
+          where: { userId: id, startsAt: { gte: new Date(dayStart.getTime() - 24 * 60 * 60 * 1000), lt: dayEnd } },
+        }),
+        this.prisma.shift.createMany({
+          data: windows.map((w) => ({ userId: id, locationId: dto.locationId, ...w })),
+        }),
+      ]);
+
+      await this.prisma.notification.create({
+        data: {
+          userId: id,
+          kind: 'ROSTER',
+          title: `Your roster changed for ${dto.date}`,
+          body: windows.length
+            ? windows.map((w) => `${w.startsAt.toISOString().slice(11, 16)}–${w.endsAt.toISOString().slice(11, 16)} UTC`).join(', ')
+            : 'No shift that day',
+        },
+      });
+
+      return {
+        date: dto.date,
+        windows: windows.map((w) => ({ startsAt: w.startsAt.toISOString(), endsAt: w.endsAt.toISOString() })),
+      };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException('Failed to set the shifts');
     }
   }
 

@@ -1,8 +1,10 @@
 import {
+  BadRequestException,
   ConflictException,
   HttpException,
   Injectable,
   InternalServerErrorException,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -11,7 +13,11 @@ import { Prisma, Role, User } from '@ta-spiru/database';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { StationLoginDto } from './dto/station-login.dto';
 import { JwtPayload, LoginResponse } from './interfaces/auth.interfaces';
+
+/** A station session is short so an unattended screen locks itself out. */
+const STATION_SESSION_TTL = '45m';
 
 @Injectable()
 export class AuthService {
@@ -66,14 +72,57 @@ export class AuthService {
     }
   }
 
-  private async issueSession(user: User): Promise<LoginResponse> {
+  /**
+   * Station sign-in for the barber-operated outlets: the shared screen sends the
+   * branch and the barber's PIN, and gets a short-lived session for that barber.
+   * The screen signs itself out again once payment is taken, ready for the next.
+   */
+  async stationLogin(dto: StationLoginDto): Promise<LoginResponse> {
+    try {
+      const location = await this.prisma.location.findUnique({
+        where: { id: dto.locationId },
+        select: { id: true, isBarberOperated: true, isActive: true },
+      });
+      if (!location || !location.isActive) {
+        throw new NotFoundException('Branch not found');
+      }
+      if (!location.isBarberOperated) {
+        throw new BadRequestException('This branch has a reception desk; sign in with email and password');
+      }
+      const candidates = await this.prisma.user.findMany({
+        where: {
+          locationId: dto.locationId,
+          role: { in: [Role.BARBER, Role.WASH_ATTENDANT] },
+          isActive: true,
+          pinHash: { not: null },
+        },
+      });
+      // PINs are per-branch, so the match identifies the barber at that screen.
+      for (const candidate of candidates) {
+        if (candidate.pinHash && (await compare(dto.pin, candidate.pinHash))) {
+          return this.issueSession(candidate, STATION_SESSION_TTL);
+        }
+      }
+      throw new UnauthorizedException('PIN not recognised at this branch');
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Station sign-in failed');
+    }
+  }
+
+  private async issueSession(user: User, expiresIn?: string): Promise<LoginResponse> {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
       role: user.role,
       locationId: user.locationId,
     };
-    const accessToken = await this.jwtService.signAsync(payload);
+    const accessToken = await this.jwtService.signAsync(
+      payload,
+      expiresIn ? { expiresIn } : undefined,
+    );
     return {
       accessToken,
       user: {

@@ -3,6 +3,7 @@ import { AuthService } from './auth.service';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { StationLoginDto } from './dto/station-login.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthenticatedUser, LoginResponse } from './interfaces/auth.interfaces';
 
@@ -14,6 +15,13 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   login(@Body() dto: LoginDto): Promise<LoginResponse> {
     return this.authService.login(dto);
+  }
+
+  /** Barber-operated outlets: the shared screen unlocks with a station PIN. */
+  @Post('station-login')
+  @HttpCode(HttpStatus.OK)
+  stationLogin(@Body() dto: StationLoginDto): Promise<LoginResponse> {
+    return this.authService.stationLogin(dto);
   }
 
   @Post('register')

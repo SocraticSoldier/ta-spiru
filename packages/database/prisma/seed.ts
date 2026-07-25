@@ -18,15 +18,19 @@ interface BranchSeed {
   address: string;
   chairs: number;
   bays: number;
+  /** Barber-run outlet: no reception desk, shared screen + station PIN login. */
+  barberOperated?: boolean;
+  /** Customers can join a virtual FIFO queue from their account. */
+  virtualQueue?: boolean;
 }
 
 const BRANCHES: readonly BranchSeed[] = [
   { slug: 'naxxar', name: 'Naxxar', address: 'Flagship Barbershop, Naxxar', chairs: 4, bays: 0 },
-  { slug: 'pama', name: 'Pama', address: 'Pama Shopping Village, Mosta', chairs: 3, bays: 0 },
-  { slug: 'san-gwann', name: 'San Ġwann', address: 'San Ġwann', chairs: 3, bays: 0 },
+  { slug: 'pama', name: 'Pama', address: 'Pama Shopping Village, Mosta', chairs: 3, bays: 0, barberOperated: true, virtualQueue: true },
+  { slug: 'san-gwann', name: 'San Ġwann', address: 'San Ġwann', chairs: 3, bays: 0, barberOperated: true },
   // Fgura: barbershop + the car wash / detailing centre next door on Zabbar Road.
   { slug: 'fgura', name: 'Fgura', address: 'Barbershop & Car Wash, Zabbar Road, Fgura', chairs: 2, bays: 2 },
-  { slug: 'san-giljan', name: "San Ġiljan – St George's Mall", address: "St George's Mall, San Ġiljan", chairs: 3, bays: 0 },
+  { slug: 'san-giljan', name: "San Ġiljan – St George's Mall", address: "St George's Mall, San Ġiljan", chairs: 3, bays: 0, barberOperated: true },
 ];
 
 interface ServiceSeed {
@@ -227,8 +231,19 @@ const main = async (): Promise<void> => {
   for (const branch of BRANCHES) {
     const location = await prisma.location.upsert({
       where: { slug: branch.slug },
-      update: { name: branch.name, address: branch.address },
-      create: { slug: branch.slug, name: branch.name, address: branch.address },
+      update: {
+        name: branch.name,
+        address: branch.address,
+        isBarberOperated: branch.barberOperated ?? false,
+        virtualQueueEnabled: branch.virtualQueue ?? false,
+      },
+      create: {
+        slug: branch.slug,
+        name: branch.name,
+        address: branch.address,
+        isBarberOperated: branch.barberOperated ?? false,
+        virtualQueueEnabled: branch.virtualQueue ?? false,
+      },
     });
 
     for (const weekday of WEEKDAYS_OPEN) {
