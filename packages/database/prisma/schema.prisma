@@ -244,6 +244,8 @@ model User {
   notifications        Notification[]     @relation("UserNotifications")
   reviewsWritten       Review[]           @relation("ReviewCustomer")
   reviewsReceived      Review[]           @relation("ReviewBarber")
+  documents            StaffDocument[]    @relation("StaffDocuments")
+  uploadedDocuments    StaffDocument[]    @relation("StaffDocumentUploader")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -443,6 +445,26 @@ model Review {
   createdAt DateTime @default(now())
 
   @@index([barberId, isPublished])
+}
+
+// A folder of documents against a staff member (contract, ID, certificates).
+// The row records where the file lives; the bytes sit in object storage.
+model StaffDocument {
+  id       String  @id @default(cuid())
+  userId   String
+  user     User    @relation("StaffDocuments", fields: [userId], references: [id], onDelete: Cascade)
+  folder   String  @default("General")
+  name     String
+  url      String
+  mimeType String?
+  sizeBytes Int?
+
+  uploadedById String?
+  uploadedBy   User?   @relation("StaffDocumentUploader", fields: [uploadedById], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, folder])
 }
 
 enum LeaveKind {

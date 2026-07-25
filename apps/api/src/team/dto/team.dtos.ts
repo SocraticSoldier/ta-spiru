@@ -197,3 +197,31 @@ export class SetShiftsDto {
   @Type(() => ShiftWindowDto)
   windows!: ShiftWindowDto[];
 }
+
+/** Register a staff document. The file itself lives in object storage. */
+export class AddDocumentDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  name!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(600)
+  url!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  folder?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  mimeType?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  sizeBytes?: number;
+}

@@ -25,6 +25,7 @@ import { fullName } from '../common/name.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { zonedTimeToUtc } from '../bookings/utils/time.util';
 import {
+  AddDocumentDto,
   CreateLeaveDto,
   CreateTeamMemberDto,
   DecideLeaveDto,
@@ -437,6 +438,142 @@ export class TeamController {
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException('Failed to set the shifts');
+    }
+  }
+
+  // ── Documents ───────────────────────────────────────────────────────────
+
+  /** Contracts, ID copies and certificates, grouped into folders. */
+  @Get(':id/documents')
+  @Roles(Role.MANAGER)
+  async documents(@Param('id') id: string): Promise<Record<string, unknown>[]> {
+    try {
+      const docs = await this.prisma.staffDocument.findMany({
+        where: { userId: id },
+        orderBy: [{ folder: 'asc' }, { createdAt: 'desc' }],
+      });
+      return docs.map((d) => ({
+        id: d.id,
+        folder: d.folder,
+        name: d.name,
+        url: d.url,
+        mimeType: d.mimeType,
+        sizeBytes: d.sizeBytes,
+        createdAt: d.createdAt.toISOString(),
+      }));
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException('Failed to list the documents');
+    }
+  }
+
+  @Post(':id/documents')
+  @Roles(Role.ADMIN)
+  async addDocument(
+    @Param('id') id: string,
+    @Body() dto: AddDocumentDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<{ id: string; folder: string }> {
+    try {
+      const member = await this.prisma.user.findFirst({ where: { id, role: { in: [...STAFF_ROLES] } } });
+      if (!member) throw new NotFoundException('Team member not found');
+      const doc = await this.prisma.staffDocument.create({
+        data: {
+          userId: id,
+          folder: dto.folder?.trim() || 'General',
+          name: dto.name.trim(),
+          url: dto.url,
+          mimeType: dto.mimeType ?? null,
+          sizeBytes: dto.sizeBytes ?? null,
+          uploadedById: user.id,
+        },
+      });
+      return { id: doc.id, folder: doc.folder };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException('Failed to add the document');
+    }
+  }
+
+  @Delete('documents/:documentId')
+  @Roles(Role.ADMIN)
+  async removeDocument(@Param('documentId') documentId: string): Promise<{ ok: true }> {
+    try {
+      const doc = await this.prisma.staffDocument.findUnique({ where: { id: documentId } });
+      if (!doc) throw new NotFoundException('Document not found');
+      await this.prisma.staffDocument.delete({ where: { id: documentId } });
+      return { ok: true };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException('Failed to remove the document');
+    }
+  }
+
+  // ── Personal staff app ──────────────────────────────────────────────────
+
+  /**
+   * Everything a staff member needs on their own phone: their upcoming roster,
+   * leave and sick balances with recent requests, and their documents. No
+   * colleague's data and no money.
+   */
+  @Get('me/overview')
+  @Roles(Role.MANAGER, Role.RECEPTIONIST, Role.BARBER, Role.WASH_ATTENDANT)
+  async myOverview(@CurrentUser() user: AuthenticatedUser): Promise<Record<string, unknown>> {
+    try {
+      const now = new Date();
+      const yearStart = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+      const [me, shifts, leave, documents, unread] = await Promise.all([
+        this.prisma.user.findUniqueOrThrow({
+          where: { id: user.id },
+          include: { location: { select: { name: true } } },
+        }),
+        this.prisma.shift.findMany({
+          where: { userId: user.id, endsAt: { gte: now } },
+          orderBy: { startsAt: 'asc' },
+          take: 30,
+          include: { location: { select: { name: true } } },
+        }),
+        this.prisma.leaveRequest.findMany({
+          where: { userId: user.id, date: { gte: yearStart } },
+          orderBy: { date: 'desc' },
+        }),
+        this.prisma.staffDocument.findMany({
+          where: { userId: user.id },
+          orderBy: [{ folder: 'asc' }, { createdAt: 'desc' }],
+        }),
+        this.prisma.notification.count({ where: { userId: user.id, readAt: null } }),
+      ]);
+      const approved = leave.filter((l) => l.status === LeaveStatus.APPROVED);
+      const leaveTaken = approved.filter((l) => l.kind === LeaveKind.LEAVE).length;
+      return {
+        name: fullName(me.firstName, me.lastName),
+        role: me.role,
+        locationName: me.location?.name ?? null,
+        stationNo: me.stationNo,
+        unreadNotifications: unread,
+        roster: shifts.map((s) => ({
+          startsAt: s.startsAt.toISOString(),
+          endsAt: s.endsAt.toISOString(),
+          locationName: s.location.name,
+        })),
+        leave: {
+          allowanceDays: me.leaveAllowanceDays,
+          taken: leaveTaken,
+          remaining: me.leaveAllowanceDays - leaveTaken,
+          sickTaken: approved.filter((l) => l.kind === LeaveKind.SICK).length,
+          pending: leave.filter((l) => l.status === LeaveStatus.PENDING).length,
+          recent: leave.slice(0, 10).map((l) => ({
+            id: l.id,
+            kind: l.kind,
+            date: l.date.toISOString().slice(0, 10),
+            status: l.status,
+          })),
+        },
+        documents: documents.map((d) => ({ id: d.id, folder: d.folder, name: d.name, url: d.url })),
+      };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException('Failed to load your overview');
     }
   }
 

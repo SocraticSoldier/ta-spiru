@@ -22,6 +22,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CreateServiceDto,
+  ReorderServicesDto,
   SetTiersDto,
   UpdateServiceDto,
 } from './dto/services-admin.dtos';
@@ -113,6 +114,31 @@ export class ServicesController {
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException('Failed to update service');
+    }
+  }
+
+  /** Set the order services appear in, top to bottom. */
+  @Put('order')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.MANAGER)
+  async reorder(@Body() dto: ReorderServicesDto): Promise<{ ordered: number }> {
+    try {
+      const found = await this.prisma.service.findMany({
+        where: { id: { in: dto.serviceIds } },
+        select: { id: true },
+      });
+      if (found.length !== dto.serviceIds.length) {
+        throw new BadRequestException('One or more services do not exist');
+      }
+      await this.prisma.$transaction(
+        dto.serviceIds.map((id, index) =>
+          this.prisma.service.update({ where: { id }, data: { sortOrder: index } }),
+        ),
+      );
+      return { ordered: dto.serviceIds.length };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException('Failed to reorder the services');
     }
   }
 

@@ -167,3 +167,11 @@ export class UpsertBarberServiceDto {
   @Min(0)
   maxDaily?: number;
 }
+
+/** New display order for the service list shown in the apps. */
+export class ReorderServicesDto {
+  @IsArray()
+  @ArrayMaxSize(200)
+  @IsString({ each: true })
+  serviceIds!: string[];
+}
