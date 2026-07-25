@@ -6,6 +6,8 @@ import { apiFetch } from '@/lib/api';
 import { KIND_COLORS, locationColor } from '@/lib/colors';
 import { formatEuro } from '@/lib/format';
 
+const TIER_LABEL: Record<string, string> = { JUNIOR: 'Junior', NORMAL: 'Normal', SENIOR: 'Senior' };
+
 interface ServiceStreamProps {
   kind: ServiceKindName;
   eyebrow: string;
@@ -52,10 +54,28 @@ export const ServiceStream = async ({ kind, eyebrow, title, copy }: ServiceStrea
           >
             <div className="flex items-baseline justify-between gap-4">
               <p className="text-lg font-medium">{service.name}</p>
-              <p className="font-display text-2xl" style={{ color: accent.text }}>
-                {formatEuro(service.priceCents)}
-              </p>
+              {service.tiers.length === 0 ? (
+                <p className="font-display text-2xl" style={{ color: accent.text }}>
+                  {service.isQuoteOnly ? 'On inspection' : formatEuro(service.priceCents)}
+                </p>
+              ) : null}
             </div>
+            {service.description ? <p className="mt-1.5 text-sm text-white/50">{service.description}</p> : null}
+            {service.tiers.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {service.tiers.map((tier) => (
+                  <div
+                    key={tier.seniority}
+                    className="rounded-lg border border-white/10 bg-black/20 px-3 py-1.5 text-sm"
+                  >
+                    <span className="text-white/50">{TIER_LABEL[tier.seniority]}</span>{' '}
+                    <span className="font-medium" style={{ color: accent.text }}>
+                      {formatEuro(tier.priceCents)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
             <p className="mt-2 text-sm text-white/50">
               {service.durationMin} min
               {service.isComboEligible ? ' · Combo Wash & Cut eligible' : ''}
