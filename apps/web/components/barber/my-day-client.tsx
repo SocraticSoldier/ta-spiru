@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { JSX } from 'react';
 import type { BarberScheduleRow, ServiceSummary, TipsSummary } from '@ta-spiru/shared';
 import { SignOutButton } from '@/components/admin/sign-out-button';
@@ -9,6 +9,11 @@ import { formatEuro } from '@/lib/format';
 import { formatTimeMalta } from '@/lib/time';
 
 const QUICK_TIP_CENTS = [200, 500, 1000, 2000];
+
+const OPEN_STATUSES = new Set(['PENDING_PAYMENT', 'CONFIRMED', 'CHECKED_IN', 'LATE']);
+
+/** Whole minutes from `nowMs` to `iso`; negative once `iso` is in the past. */
+const minutesUntil = (nowMs: number, iso: string): number => Math.round((new Date(iso).getTime() - nowMs) / 60000);
 
 const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: 'CHECKED_IN', label: 'Checked in' },
@@ -54,8 +59,21 @@ export const MyDayClient = ({
   const [overlap, setOverlap] = useState<OverlapConfirm | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tips, setTips] = useState<TipsSummary>(initialTips);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const tick = setInterval(() => setNow(Date.now()), 20_000);
+    return () => clearInterval(tick);
+  }, []);
+
+  useEffect(() => {
+    const poll = setInterval(() => router.refresh(), 60_000);
+    return () => clearInterval(poll);
+  }, [router]);
 
   const sorted = [...initialSchedule].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  const activeVisit = sorted.find((v) => v.status === 'IN_PROGRESS') ?? null;
+  const upNext = sorted.find((v) => v.id !== activeVisit?.id && OPEN_STATUSES.has(v.status)) ?? null;
 
   const setStatus = async (appointmentId: string, status: string): Promise<void> => {
     setBusyId(appointmentId);
@@ -155,6 +173,31 @@ export const MyDayClient = ({
           ))}
         </div>
       </div>
+
+      {activeVisit || upNext ? (
+        <div className="mt-4 rounded-xl border border-bronze/30 bg-bronze/10 p-4 text-sm">
+          {activeVisit ? (
+            <p>
+              <span className="font-medium text-bronze-light">Serving {activeVisit.clientName}</span>
+              {' — '}
+              {(() => {
+                const mins = minutesUntil(now, activeVisit.endsAt);
+                return mins >= 0 ? `${mins}m left` : `${Math.abs(mins)}m over`;
+              })()}
+            </p>
+          ) : null}
+          {upNext ? (
+            <p className={activeVisit ? 'mt-1 text-white/60' : 'font-medium text-bronze-light'}>
+              Next: {upNext.clientName} at {formatTimeMalta(upNext.startsAt)}
+              {' — '}
+              {(() => {
+                const mins = minutesUntil(now, upNext.startsAt);
+                return mins <= 0 ? 'ready now' : `in ~${mins}m`;
+              })()}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       {error ? <p className="mt-4 rounded-lg border border-red-400/25 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</p> : null}
 
