@@ -129,6 +129,15 @@ enum StockMovementKind {
   TRANSFER_IN
   TRANSFER_OUT
   ADJUSTMENT
+  RETURN // customer returned a product; stock goes back on the shelf
+}
+
+// How a customer wants to hear about their appointments. An SMS always goes
+// out when a barber falls ill or becomes unavailable, whatever is set here.
+enum ContactChannel {
+  EMAIL
+  SMS
+  PUSH
 }
 
 // ─────────────────────────────── Network ───────────────────────────────
@@ -188,6 +197,14 @@ model User {
   location     Location? @relation(fields: [locationId], references: [id])
   isActive     Boolean   @default(true)
 
+  // Customer profile
+  birthday        DateTime? // drives the birthday gift
+  occupation      String? // for neighbouring-company staff discounts
+  workplace       String? // e.g. "St George's Mall" — cross-referenced with HR
+  staffNumber     String? // their number at that employer
+  isTaSpiruStaff  Boolean          @default(false) // internal staff discounts
+  contactChannels ContactChannel[] @default([EMAIL, SMS, PUSH])
+
   seniority Seniority? // barbers only — selects the service price/duration tier
   stationNo Int? // barber chair / station number (shown to customers too)
   photoUrl  String? // profile photo, shown on the customer booking screen
@@ -220,6 +237,8 @@ model User {
   accountMembers       AccountMember[]    @relation("AccountMembers")
   leaveRequests        LeaveRequest[]     @relation("StaffLeave")
   notifications        Notification[]     @relation("UserNotifications")
+  reviewsWritten       Review[]           @relation("ReviewCustomer")
+  reviewsReceived      Review[]           @relation("ReviewBarber")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -397,6 +416,28 @@ model AppSetting {
   value String
 
   updatedAt DateTime @updatedAt
+}
+
+// A post-service rating. Six questions plus an overall score; the barber's
+// public star rating is the average of published reviews.
+model Review {
+  id            String      @id @default(cuid())
+  appointmentId String      @unique
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  customerId    String
+  customer      User        @relation("ReviewCustomer", fields: [customerId], references: [id], onDelete: Cascade)
+  barberId      String?
+  barber        User?       @relation("ReviewBarber", fields: [barberId], references: [id])
+
+  overall      Int // 1–5
+  answers      Int[] // the six questionnaire answers, 1–5 each
+  comment      String?
+  isPublished  Boolean  @default(true) // admin can hide a review
+  sharedGoogle Boolean  @default(false) // pushed to Google reviews
+
+  createdAt DateTime @default(now())
+
+  @@index([barberId, isPublished])
 }
 
 enum LeaveKind {
@@ -597,6 +638,7 @@ model Appointment {
   notes      String?
 
   serviceChanges ServiceChangeLog[]
+  review         Review?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

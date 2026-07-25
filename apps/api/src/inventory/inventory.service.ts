@@ -16,6 +16,7 @@ import {
   BackBarUseDto,
   LevelsQueryDto,
   StockAdjustDto,
+  ProductReturnDto,
   StockIntakeDto,
   StockTransferDto,
 } from './dto/inventory.dtos';
@@ -197,6 +198,43 @@ export class InventoryService {
       return this.toRow(product, level.locationId, level.location.name, level.quantity, level.reorderThreshold);
     } catch (error) {
       throw this.wrap(error, 'Recording back-bar use failed');
+    }
+  }
+
+  /** Reception takes a product back: stock returns and the movement is logged. */
+  async productReturn(dto: ProductReturnDto, actor: AuthenticatedUser): Promise<StockLevelRow> {
+    if (actor.role !== Role.ADMIN && actor.locationId !== null && actor.locationId !== dto.locationId) {
+      throw new ForbiddenException('Returns must be recorded at your own branch');
+    }
+    try {
+      const product = await this.resolveProduct(dto.productId, dto.barcode);
+      const level = await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.stockLevel.upsert({
+          where: { productId_locationId: { productId: product.id, locationId: dto.locationId } },
+          update: { quantity: { increment: dto.quantity } },
+          create: {
+            productId: product.id,
+            locationId: dto.locationId,
+            quantity: dto.quantity,
+            reorderThreshold: 6,
+          },
+          include: { location: { select: { name: true } } },
+        });
+        await tx.stockMovement.create({
+          data: {
+            productId: product.id,
+            locationId: dto.locationId,
+            kind: StockMovementKind.RETURN,
+            quantityDelta: dto.quantity,
+            note: dto.reason ?? null,
+            performedById: actor.id,
+          },
+        });
+        return updated;
+      });
+      return this.toRow(product, level.locationId, level.location.name, level.quantity, level.reorderThreshold);
+    } catch (error) {
+      throw this.wrap(error, 'Recording the return failed');
     }
   }
 

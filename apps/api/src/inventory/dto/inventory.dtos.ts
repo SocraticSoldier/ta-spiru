@@ -96,3 +96,28 @@ export class LevelsQueryDto {
   @IsString()
   lowStockOnly?: string;
 }
+
+/** A customer returns a product at the desk; stock goes back on the shelf. */
+export class ProductReturnDto {
+  @IsOptional()
+  @IsString()
+  productId?: string;
+
+  @IsOptional()
+  @IsString()
+  barcode?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  locationId!: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  quantity!: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(240)
+  reason?: string;
+}

@@ -7,6 +7,7 @@ import { BarbersModule } from './barbers/barbers.module';
 import { BookingsModule } from './bookings/bookings.module';
 import { validateEnv } from './config/env.validation';
 import { CouponsModule } from './coupons/coupons.module';
+import { CustomersModule } from './customers/customers.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { LocationsModule } from './locations/locations.module';
 import { LoyaltyModule } from './loyalty/loyalty.module';
@@ -17,6 +18,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { QueueModule } from './queue/queue.module';
 import { RedisModule } from './redis/redis.module';
 import { ReportsModule } from './reports/reports.module';
+import { ReviewsModule } from './reviews/reviews.module';
 import { ServicesModule } from './services/services.module';
 import { TeamModule } from './team/team.module';
 import { TimeBlocksModule } from './time-blocks/time-blocks.module';
@@ -51,6 +53,8 @@ import { WaitingListModule } from './waiting-list/waiting-list.module';
     CouponsModule,
     TeamModule,
     NotificationsModule,
+    ReviewsModule,
+    CustomersModule,
   ],
 })
 export class AppModule {}

@@ -134,7 +134,7 @@ export class LoyaltyService {
       const token = qrPayload.startsWith(QR_PREFIX) ? qrPayload.slice(QR_PREFIX.length) : qrPayload;
       const account = await this.prisma.loyaltyAccount.findUnique({
         where: { walletPassToken: token },
-        include: { user: { select: { firstName: true, lastName: true } } },
+        include: { user: { select: { firstName: true, lastName: true, isTaSpiruStaff: true } } },
       });
       if (!account) {
         throw new NotFoundException('Unknown wallet pass');
@@ -145,6 +145,7 @@ export class LoyaltyService {
         tier: account.tier,
         balancePoints: account.balancePoints,
         lifetimePoints: account.lifetimePoints,
+        isTaSpiruStaff: account.user.isTaSpiruStaff,
       };
     } catch (error) {
       throw this.wrap(error, 'Failed to scan wallet pass');

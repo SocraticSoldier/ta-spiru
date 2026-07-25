@@ -10,6 +10,7 @@ import {
   BackBarUseDto,
   LevelsQueryDto,
   StockAdjustDto,
+  ProductReturnDto,
   StockIntakeDto,
   StockTransferDto,
 } from './dto/inventory.dtos';
@@ -44,6 +45,15 @@ export class InventoryController {
   @Roles(...STAFF_ROLES)
   backBarUse(@Body() dto: BackBarUseDto, @CurrentUser() user: AuthenticatedUser): Promise<StockLevelRow> {
     return this.inventoryService.backBarUse(dto, user);
+  }
+
+  @Post('return')
+  @Roles(Role.MANAGER, Role.RECEPTIONIST)
+  productReturn(
+    @Body() dto: ProductReturnDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<StockLevelRow> {
+    return this.inventoryService.productReturn(dto, user);
   }
 
   @Get('levels')

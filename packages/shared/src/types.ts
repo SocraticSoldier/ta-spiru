@@ -281,6 +281,8 @@ export interface LoyaltyScanResult {
   tier: LoyaltyTierName;
   balancePoints: number;
   lifetimePoints: number;
+  /** Gates the internal staff discount at the till — a normal card is false. */
+  isTaSpiruStaff: boolean;
 }
 
 export interface TransactionRow {
