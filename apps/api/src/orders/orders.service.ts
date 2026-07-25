@@ -39,7 +39,7 @@ export class OrdersService {
       let couponCode: string | null = null;
       let discountCents = 0;
       if (dto.couponCode) {
-        const redeemed = await this.couponsService.redeem(dto.couponCode, subtotalCents, dto.locationId, actor);
+        const redeemed = await this.couponsService.redeem(dto.couponCode, subtotalCents, dto.locationId, dto.customerId ?? null);
         couponCode = redeemed.code;
         discountCents = redeemed.discountCents;
       }

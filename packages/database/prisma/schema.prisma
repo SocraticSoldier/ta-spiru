@@ -249,6 +249,7 @@ model User {
   documents            StaffDocument[]     @relation("StaffDocuments")
   uploadedDocuments    StaffDocument[]     @relation("StaffDocumentUploader")
   tipsReceived         Tip[]               @relation("BarberTips")
+  targetedCoupons      Coupon[]            @relation("CouponCustomer")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -409,6 +410,8 @@ model Coupon {
   validUntil       DateTime?
   locationId       String? // null = all branches
   location         Location?  @relation(fields: [locationId], references: [id])
+  customerId       String? // null = any customer; set = only this one can redeem it
+  customer         User?      @relation("CouponCustomer", fields: [customerId], references: [id], onDelete: Cascade)
   lowPeakOnly      Boolean    @default(false) // e.g. neighbouring-company staff discounts
   maxRedemptions   Int?
   redemptions      Int        @default(0)

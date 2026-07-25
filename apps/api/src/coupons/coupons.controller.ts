@@ -32,8 +32,11 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { AuthenticatedUser } from '../auth/interfaces/auth.interfaces';
+import { fullName } from '../common/name.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { CouponsService } from './coupons.service';
+
+type CouponWithCustomer = Coupon & { customer: { firstName: string; lastName: string } | null };
 
 const POINT_VALUE_KEY = 'loyalty.pointValueCents';
 const DEFAULT_POINT_VALUE_CENTS = 5; // 100 points = €5
@@ -64,6 +67,11 @@ class CreateCouponDto {
   @IsOptional()
   @IsString()
   locationId?: string;
+
+  /** Restrict this code to one specific customer — null/omitted means anyone. */
+  @IsOptional()
+  @IsString()
+  customerId?: string;
 
   @IsOptional()
   @IsBoolean()
@@ -109,6 +117,8 @@ export interface CouponRow {
   validFrom: string | null;
   validUntil: string | null;
   locationId: string | null;
+  customerId: string | null;
+  customerName: string | null;
   lowPeakOnly: boolean;
   maxRedemptions: number | null;
   redemptions: number;
@@ -130,7 +140,10 @@ export class CouponsController {
   @Roles(Role.MANAGER)
   async list(): Promise<CouponRow[]> {
     try {
-      const rows = await this.prisma.coupon.findMany({ orderBy: { createdAt: 'desc' } });
+      const rows = await this.prisma.coupon.findMany({
+        orderBy: { createdAt: 'desc' },
+        include: { customer: { select: { firstName: true, lastName: true } } },
+      });
       return rows.map((c) => this.toRow(c));
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -149,6 +162,12 @@ export class CouponsController {
       }
       const existing = await this.prisma.coupon.findUnique({ where: { code } });
       if (existing) throw new BadRequestException(`Code ${code} already exists`);
+      if (dto.customerId) {
+        const customer = await this.prisma.user.findFirst({
+          where: { id: dto.customerId, role: Role.CUSTOMER },
+        });
+        if (!customer) throw new BadRequestException('Customer not found');
+      }
       const c = await this.prisma.coupon.create({
         data: {
           code,
@@ -157,10 +176,12 @@ export class CouponsController {
           validFrom: dto.validFrom ? new Date(dto.validFrom) : null,
           validUntil: dto.validUntil ? new Date(dto.validUntil) : null,
           locationId: dto.locationId ?? null,
+          customerId: dto.customerId ?? null,
           lowPeakOnly: dto.lowPeakOnly ?? false,
           maxRedemptions: dto.maxRedemptions ?? null,
           notes: dto.notes ?? null,
         },
+        include: { customer: { select: { firstName: true, lastName: true } } },
       });
       return this.toRow(c);
     } catch (error) {
@@ -176,7 +197,11 @@ export class CouponsController {
     try {
       const found = await this.prisma.coupon.findUnique({ where: { id } });
       if (!found) throw new NotFoundException('Coupon not found');
-      const c = await this.prisma.coupon.update({ where: { id }, data: { isActive: Boolean(isActive) } });
+      const c = await this.prisma.coupon.update({
+        where: { id },
+        data: { isActive: Boolean(isActive) },
+        include: { customer: { select: { firstName: true, lastName: true } } },
+      });
       return this.toRow(c);
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -210,7 +235,7 @@ export class CouponsController {
     @Body() dto: ValidateCouponDto,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<{ code: string; discountCents: number; lowPeakOnly: boolean }> {
-    return this.couponsService.redeem(dto.code, dto.amountCents, dto.locationId, user);
+    return this.couponsService.redeem(dto.code, dto.amountCents, dto.locationId, user.id);
   }
 
   /** What a loyalty point is worth (owner-tunable; default 100 pts = €5). */
@@ -243,7 +268,7 @@ export class CouponsController {
     }
   }
 
-  private toRow(c: Coupon): CouponRow {
+  private toRow(c: CouponWithCustomer): CouponRow {
     return {
       id: c.id,
       code: c.code,
@@ -252,6 +277,8 @@ export class CouponsController {
       validFrom: c.validFrom?.toISOString() ?? null,
       validUntil: c.validUntil?.toISOString() ?? null,
       locationId: c.locationId,
+      customerId: c.customerId,
+      customerName: c.customer ? fullName(c.customer.firstName, c.customer.lastName) : null,
       lowPeakOnly: c.lowPeakOnly,
       maxRedemptions: c.maxRedemptions,
       redemptions: c.redemptions,

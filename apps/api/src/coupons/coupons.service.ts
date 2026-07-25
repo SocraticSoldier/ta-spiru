@@ -1,6 +1,5 @@
 import { BadRequestException, HttpException, Injectable, InternalServerErrorException } from '@nestjs/common';
 import { CouponKind } from '@ta-spiru/database';
-import { AuthenticatedUser } from '../auth/interfaces/auth.interfaces';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface RedeemedCoupon {
@@ -18,8 +17,19 @@ export class CouponsService {
    * one redemption atomically. This is the only place a coupon is spent —
    * a caller that applies the returned discount and then aborts the sale
    * has burned a redemption, same as a till operator voiding a paper coupon.
+   *
+   * `customerId` is whoever the discount is actually for — the logged-in
+   * customer at self-checkout, or the sale's customer at a staffed till.
+   * It is deliberately NOT the staff member operating the till, so a
+   * per-customer or birthday-gated code is checked against the right
+   * person even when a barber applies it on a customer's behalf.
    */
-  async redeem(code: string, amountCents: number, locationId: string | undefined, user: AuthenticatedUser): Promise<RedeemedCoupon> {
+  async redeem(
+    code: string,
+    amountCents: number,
+    locationId: string | undefined,
+    customerId: string | null,
+  ): Promise<RedeemedCoupon> {
     try {
       const upperCode = code.toUpperCase();
       const c = await this.prisma.coupon.findUnique({ where: { code: upperCode } });
@@ -33,8 +43,13 @@ export class CouponsService {
       if (c.locationId && locationId && c.locationId !== locationId) {
         throw new BadRequestException('That code is not valid at this branch');
       }
+      if (c.customerId && c.customerId !== customerId) {
+        throw new BadRequestException('That code is assigned to a different customer');
+      }
       if (c.isBirthdayReward) {
-        const customer = await this.prisma.user.findUnique({ where: { id: user.id }, select: { birthday: true } });
+        const customer = customerId
+          ? await this.prisma.user.findUnique({ where: { id: customerId }, select: { birthday: true } })
+          : null;
         if (!customer?.birthday || customer.birthday.getUTCMonth() !== now.getUTCMonth()) {
           throw new BadRequestException('That code only applies during your birthday month');
         }

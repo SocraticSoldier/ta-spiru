@@ -332,4 +332,77 @@ describe('Service photos, barber POS, reschedule, leaderboard & birthday coupon 
     expect(naxxar.longitude).toBeGreaterThan(14.1);
     expect(naxxar.longitude).toBeLessThan(14.6);
   });
+
+  it('scopes a coupon to one specific customer', async () => {
+    const target = await http
+      .post('/api/v1/auth/register')
+      .send({ email: uniqueEmail('vip'), password: 'Lifestyle!1', firstName: 'Vip', lastName: 'Customer' })
+      .expect(201);
+    const other = await http
+      .post('/api/v1/auth/register')
+      .send({ email: uniqueEmail('notvip'), password: 'Lifestyle!1', firstName: 'Not', lastName: 'Vip' })
+      .expect(201);
+
+    const code = `E2EVIP${Date.now()}`;
+    const created = await http
+      .post('/api/v1/coupons')
+      .set(auth(adminToken))
+      .send({ code, kind: 'AMOUNT', value: 1000, customerId: target.body.user.id })
+      .expect(201);
+    expect(created.body.customerId).toBe(target.body.user.id);
+    expect(created.body.customerName).toBe('Vip Customer');
+
+    await http
+      .post('/api/v1/coupons/validate')
+      .set(auth(other.body.accessToken))
+      .send({ code, amountCents: 2000 })
+      .expect(400);
+
+    const ok = await http
+      .post('/api/v1/coupons/validate')
+      .set(auth(target.body.accessToken))
+      .send({ code, amountCents: 2000 })
+      .expect(201);
+    expect(ok.body.discountCents).toBe(1000);
+  });
+
+  it('checks the actual sale customer’s birthday for a POS order, not the barber applying it', async () => {
+    const thisMonth = new Date().toISOString().slice(5, 7);
+    const customer = await http
+      .post('/api/v1/auth/register')
+      .send({ email: uniqueEmail('possbday'), password: 'Lifestyle!1', firstName: 'Posso', lastName: 'Bday' })
+      .expect(201);
+    await http
+      .patch('/api/v1/customers/me')
+      .set(auth(customer.body.accessToken))
+      .send({ birthday: `1990-${thisMonth}-15` })
+      .expect(200);
+
+    const product = await prisma.product.findFirstOrThrow({ where: { sku: 'TS-BEARD-OIL' } });
+
+    // Without a customerId on the sale, there is no one to check a birthday
+    // against, so a birthday-gated code is correctly refused.
+    await http
+      .post('/api/v1/orders/pos')
+      .set(auth(louisToken))
+      .send({ locationId: naxxarId, items: [{ productId: product.id, quantity: 1 }], couponCode: 'BIRTHDAY5' })
+      .expect(400);
+
+    // Tied to the actual birthday customer, it is honoured — proving the
+    // check runs against the sale's customer, not the barber (Louis, whose
+    // own birthday is very unlikely to be this month too).
+    const sale = await http
+      .post('/api/v1/orders/pos')
+      .set(auth(louisToken))
+      .send({
+        locationId: naxxarId,
+        customerId: customer.body.user.id,
+        items: [{ productId: product.id, quantity: 1 }],
+        couponCode: 'BIRTHDAY5',
+      })
+      .expect(201);
+    expect(sale.body.discountCents).toBe(500);
+
+    await prisma.order.delete({ where: { id: sale.body.orderId } });
+  });
 });
