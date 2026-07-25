@@ -225,3 +225,14 @@ export class AddDocumentDto {
   @Min(0)
   sizeBytes?: number;
 }
+
+/** A barber recording a tip for themselves. */
+export class RecordTipDto {
+  @IsInt()
+  @Min(1)
+  amountCents!: number;
+
+  @IsOptional()
+  @IsString()
+  appointmentId?: string;
+}

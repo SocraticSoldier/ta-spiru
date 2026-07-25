@@ -246,6 +246,7 @@ model User {
   reviewsReceived      Review[]           @relation("ReviewBarber")
   documents            StaffDocument[]    @relation("StaffDocuments")
   uploadedDocuments    StaffDocument[]    @relation("StaffDocumentUploader")
+  tipsReceived         Tip[]              @relation("BarberTips")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -668,6 +669,7 @@ model Appointment {
 
   serviceChanges ServiceChangeLog[]
   review         Review?
+  tips           Tip[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -697,6 +699,21 @@ model ServiceChangeLog {
 
   @@index([createdAt])
   @@index([acknowledged])
+}
+
+// A cash or card tip a barber records for themselves. Kept apart from
+// service revenue — never counted as a sale, only surfaced to the barber's
+// own summary and the owner's performance leaderboard.
+model Tip {
+  id            String       @id @default(cuid())
+  barberId      String
+  barber        User         @relation("BarberTips", fields: [barberId], references: [id], onDelete: Cascade)
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  amountCents   Int
+  createdAt     DateTime     @default(now())
+
+  @@index([barberId, createdAt])
 }
 
 // Live walk-in queue; ordering is joinedAt within WAITING status.

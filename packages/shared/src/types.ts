@@ -366,3 +366,16 @@ export interface BookingConfirmation {
   amountCents: number;
   paymentReference: string;
 }
+
+export interface TipEntry {
+  id: string;
+  amountCents: number;
+  appointmentId: string | null;
+  createdAt: string;
+}
+
+/** A barber's own tips for today — nobody else's, never a sale. */
+export interface TipsSummary {
+  totalCents: number;
+  entries: TipEntry[];
+}

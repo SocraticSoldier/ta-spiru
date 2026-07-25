@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import type { JSX } from 'react';
-import type { AuthUser, BarberScheduleRow, ServiceSummary } from '@ta-spiru/shared';
+import type { AuthUser, BarberScheduleRow, ServiceSummary, TipsSummary } from '@ta-spiru/shared';
 import { MyDayClient } from '@/components/barber/my-day-client';
 import { apiFetch } from '@/lib/api';
 import { todayMalta } from '@/lib/time';
@@ -26,12 +26,20 @@ const MyDayPage = async (): Promise<JSX.Element> => {
   }
 
   const date = todayMalta();
-  const [schedule, services] = await Promise.all([
+  const [schedule, services, tips] = await Promise.all([
     apiFetch<BarberScheduleRow[]>(`/barbers/me/schedule?date=${date}`).catch((): BarberScheduleRow[] => []),
     apiFetch<ServiceSummary[]>('/services?kind=BARBER').catch((): ServiceSummary[] => []),
+    apiFetch<TipsSummary>('/team/me/tips').catch((): TipsSummary => ({ totalCents: 0, entries: [] })),
   ]);
 
-  return <MyDayClient initialSchedule={schedule} services={services} barberName={`${user.firstName} ${user.lastName}`.trim()} />;
+  return (
+    <MyDayClient
+      initialSchedule={schedule}
+      services={services}
+      initialTips={tips}
+      barberName={`${user.firstName} ${user.lastName}`.trim()}
+    />
+  );
 };
 
 export default MyDayPage;

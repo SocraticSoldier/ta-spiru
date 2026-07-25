@@ -3,10 +3,12 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import type { JSX } from 'react';
-import type { BarberScheduleRow, ServiceSummary } from '@ta-spiru/shared';
+import type { BarberScheduleRow, ServiceSummary, TipsSummary } from '@ta-spiru/shared';
 import { SignOutButton } from '@/components/admin/sign-out-button';
 import { formatEuro } from '@/lib/format';
 import { formatTimeMalta } from '@/lib/time';
+
+const QUICK_TIP_CENTS = [200, 500, 1000, 2000];
 
 const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: 'CHECKED_IN', label: 'Checked in' },
@@ -37,17 +39,21 @@ interface OverlapConfirm {
 export const MyDayClient = ({
   initialSchedule,
   services,
+  initialTips,
   barberName,
 }: {
   initialSchedule: BarberScheduleRow[];
   services: ServiceSummary[];
+  initialTips: TipsSummary;
   barberName: string;
 }): JSX.Element => {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [addingFor, setAddingFor] = useState<string | null>(null);
+  const [tippingFor, setTippingFor] = useState<string | null>(null);
   const [overlap, setOverlap] = useState<OverlapConfirm | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tips, setTips] = useState<TipsSummary>(initialTips);
 
   const sorted = [...initialSchedule].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
 
@@ -97,6 +103,26 @@ export const MyDayClient = ({
     router.refresh();
   };
 
+  const recordTip = async (amountCents: number, appointmentId?: string): Promise<void> => {
+    const busyKey = appointmentId ?? 'general';
+    setBusyId(busyKey);
+    setError(null);
+    const res = await fetch('/api/barber/tip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amountCents, appointmentId }),
+    });
+    setBusyId(null);
+    if (!res.ok) {
+      const payload = (await res.json().catch(() => null)) as { message?: string } | null;
+      setError(payload?.message ?? 'Could not record the tip');
+      return;
+    }
+    const entry = (await res.json()) as { id: string; amountCents: number; appointmentId: string | null; createdAt: string };
+    setTips((prev) => ({ totalCents: prev.totalCents + entry.amountCents, entries: [entry, ...prev.entries] }));
+    setTippingFor(null);
+  };
+
   return (
     <main className="mx-auto max-w-2xl px-6 py-10">
       <div className="flex items-center justify-between">
@@ -109,6 +135,26 @@ export const MyDayClient = ({
       <p className="mt-2 text-sm text-white/50">
         Privacy: you see the client&rsquo;s name and requested services only — no phone, notes or prices from their profile.
       </p>
+
+      <div className="mt-4 flex items-center justify-between rounded-xl border border-white/10 bg-graphite p-4">
+        <div>
+          <p className="text-sm text-white/50">Tips today</p>
+          <p className="mt-0.5 text-xl font-medium text-bronze-light">{formatEuro(tips.totalCents)}</p>
+        </div>
+        <div className="flex flex-wrap justify-end gap-1.5">
+          {QUICK_TIP_CENTS.map((amount) => (
+            <button
+              key={amount}
+              type="button"
+              disabled={busyId === 'general'}
+              onClick={() => void recordTip(amount)}
+              className="rounded-md border border-white/10 px-2.5 py-1 text-xs text-white/70 transition hover:border-bronze hover:text-bronze-light disabled:opacity-30"
+            >
+              +{formatEuro(amount)}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {error ? <p className="mt-4 rounded-lg border border-red-400/25 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</p> : null}
 
@@ -154,7 +200,31 @@ export const MyDayClient = ({
                 >
                   + Add service
                 </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setTippingFor(tippingFor === visit.lastAppointmentId ? null : visit.lastAppointmentId)}
+                  className="rounded-md border border-white/10 px-2.5 py-1 text-xs text-white/70 transition hover:border-bronze hover:text-bronze-light disabled:opacity-30"
+                >
+                  + Tip
+                </button>
               </div>
+
+              {tippingFor === visit.lastAppointmentId ? (
+                <div className="mt-3 flex flex-wrap gap-1.5 border-t border-white/5 pt-3">
+                  {QUICK_TIP_CENTS.map((amount) => (
+                    <button
+                      key={amount}
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void recordTip(amount, visit.lastAppointmentId)}
+                      className="rounded-md bg-white/5 px-2.5 py-1 text-xs text-white/70 transition hover:bg-bronze/15 hover:text-bronze-light disabled:opacity-30"
+                    >
+                      {formatEuro(amount)}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
 
               {addingFor === visit.id ? (
                 <div className="mt-3 flex flex-wrap gap-1.5 border-t border-white/5 pt-3">

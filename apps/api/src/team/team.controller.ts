@@ -15,6 +15,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AppointmentStatus, LeaveKind, LeaveStatus, Prisma, Role } from '@ta-spiru/database';
+import type { TipEntry, TipsSummary } from '@ta-spiru/shared';
 import { hashSync } from 'bcryptjs';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -29,6 +30,7 @@ import {
   CreateLeaveDto,
   CreateTeamMemberDto,
   DecideLeaveDto,
+  RecordTipDto,
   SetShiftsDto,
   UpdateTeamMemberDto,
 } from './dto/team.dtos';
@@ -319,11 +321,12 @@ export class TeamController {
         mostBookings: null,
         mostRetained: null,
         mostNewClients: null,
+        mostTips: null,
       };
       if (!barbers.length) return empty;
       const barberIds = barbers.map((b) => b.id);
 
-      const [appts, earlier] = await Promise.all([
+      const [appts, earlier, tips] = await Promise.all([
         this.prisma.appointment.findMany({
           where: { barberId: { in: barberIds }, startsAt: { gte: start, lte: end } },
           select: { barberId: true, customerId: true, status: true },
@@ -333,8 +336,14 @@ export class TeamController {
           select: { barberId: true, customerId: true },
           distinct: ['barberId', 'customerId'],
         }),
+        this.prisma.tip.groupBy({
+          by: ['barberId'],
+          where: { barberId: { in: barberIds }, createdAt: { gte: start, lte: end } },
+          _sum: { amountCents: true },
+        }),
       ]);
       const earlierSet = new Set(earlier.map((e) => `${e.barberId}:${e.customerId}`));
+      const tipsByBarber = new Map(tips.map((t) => [t.barberId, t._sum.amountCents ?? 0]));
 
       const byBarber = new Map<string, { bookings: number; completed: Set<string> }>();
       for (const b of barbers) byBarber.set(b.id, { bookings: 0, completed: new Set() });
@@ -349,6 +358,7 @@ export class TeamController {
       let mostBookings: { barberId: string; value: number } | null = null;
       let mostRetained: { barberId: string; value: number } | null = null;
       let mostNewClients: { barberId: string; value: number } | null = null;
+      let mostTips: { barberId: string; value: number } | null = null;
       for (const [barberId, row] of byBarber) {
         if (!mostBookings || row.bookings > mostBookings.value) mostBookings = { barberId, value: row.bookings };
         let retained = 0;
@@ -359,6 +369,8 @@ export class TeamController {
         }
         if (!mostRetained || retained > mostRetained.value) mostRetained = { barberId, value: retained };
         if (!mostNewClients || fresh > mostNewClients.value) mostNewClients = { barberId, value: fresh };
+        const tipCents = tipsByBarber.get(barberId) ?? 0;
+        if (!mostTips || tipCents > mostTips.value) mostTips = { barberId, value: tipCents };
       }
 
       const nameOf = (id: string): string => {
@@ -374,6 +386,7 @@ export class TeamController {
         mostBookings: toEntry(mostBookings),
         mostRetained: toEntry(mostRetained),
         mostNewClients: toEntry(mostNewClients),
+        mostTips: toEntry(mostTips),
       };
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -594,6 +607,64 @@ export class TeamController {
     } catch (error) {
       if (error instanceof HttpException) throw error;
       throw new InternalServerErrorException('Failed to remove the document');
+    }
+  }
+
+  // ── Tips ─────────────────────────────────────────────────────────────────
+
+  /** A barber records a tip for themselves — cash or card, optionally tied to a visit. */
+  @Post('me/tips')
+  @Roles(Role.BARBER)
+  async recordTip(
+    @Body() dto: RecordTipDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<TipEntry> {
+    try {
+      if (dto.appointmentId) {
+        const appt = await this.prisma.appointment.findFirst({
+          where: { id: dto.appointmentId, barberId: user.id },
+          select: { id: true },
+        });
+        if (!appt) throw new NotFoundException('Appointment not found for this barber');
+      }
+      const tip = await this.prisma.tip.create({
+        data: { barberId: user.id, appointmentId: dto.appointmentId ?? null, amountCents: dto.amountCents },
+      });
+      return {
+        id: tip.id,
+        amountCents: tip.amountCents,
+        appointmentId: tip.appointmentId,
+        createdAt: tip.createdAt.toISOString(),
+      };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException('Failed to record the tip');
+    }
+  }
+
+  /** Today's tips for the signed-in barber — their own running total, nobody else's. */
+  @Get('me/tips')
+  @Roles(Role.BARBER)
+  async myTips(@CurrentUser() user: AuthenticatedUser): Promise<TipsSummary> {
+    try {
+      const dayStart = new Date();
+      dayStart.setUTCHours(0, 0, 0, 0);
+      const tips = await this.prisma.tip.findMany({
+        where: { barberId: user.id, createdAt: { gte: dayStart } },
+        orderBy: { createdAt: 'desc' },
+      });
+      return {
+        totalCents: tips.reduce((sum, t) => sum + t.amountCents, 0),
+        entries: tips.map((t) => ({
+          id: t.id,
+          amountCents: t.amountCents,
+          appointmentId: t.appointmentId,
+          createdAt: t.createdAt.toISOString(),
+        })),
+      };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException('Failed to load your tips');
     }
   }
 

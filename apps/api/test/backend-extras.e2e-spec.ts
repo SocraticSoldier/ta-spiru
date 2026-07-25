@@ -34,6 +34,7 @@ describe('Service photos, barber POS, reschedule, leaderboard & birthday coupon 
   });
 
   afterAll(async () => {
+    await prisma.tip.deleteMany({ where: { barberId: louisId } });
     await prisma.appointment.deleteMany({ where: { barberId: louisId, notes: 'e2e-reschedule' } });
     await app.close();
   });
@@ -180,5 +181,58 @@ describe('Service photos, barber POS, reschedule, leaderboard & birthday coupon 
         .expect(201)
     ).body.accessToken;
     await http.get('/api/v1/timeclock/staff').query({ locationId: naxxarId }).set(auth(customerToken)).expect(403);
+  });
+
+  it('lets a barber record and see their own tips only', async () => {
+    const slot = `${futureDate(21)}T09:00:00.000Z`;
+    const booking = await http
+      .post('/api/v1/bookings')
+      .set(auth(adminToken))
+      .send({ locationId: naxxarId, serviceId: fadeId, startsAt: slot, barberId: louisId, notes: 'e2e-reschedule' })
+      .expect(201);
+
+    // A general tip, not tied to any visit.
+    const general = await http
+      .post('/api/v1/team/me/tips')
+      .set(auth(louisToken))
+      .send({ amountCents: 500 })
+      .expect(201);
+    expect(general.body).toEqual(
+      expect.objectContaining({ id: expect.any(String), amountCents: 500, appointmentId: null }),
+    );
+
+    // A tip tied to one of the barber's own visits.
+    const tied = await http
+      .post('/api/v1/team/me/tips')
+      .set(auth(louisToken))
+      .send({ amountCents: 1000, appointmentId: booking.body.id })
+      .expect(201);
+    expect(tied.body.appointmentId).toBe(booking.body.id);
+
+    // Cannot tie a tip to another barber's appointment.
+    const samueleToken = (
+      await http.post('/api/v1/auth/login').send({ email: 'samuele@taspiru.com', password: 'Staff!2026' }).expect(200)
+    ).body.accessToken;
+    await http
+      .post('/api/v1/team/me/tips')
+      .set(auth(samueleToken))
+      .send({ amountCents: 300, appointmentId: booking.body.id })
+      .expect(404);
+
+    const mine = await http.get('/api/v1/team/me/tips').set(auth(louisToken)).expect(200);
+    expect(mine.body.totalCents).toBeGreaterThanOrEqual(1500);
+    expect(mine.body.entries.some((e: { id: string }) => e.id === general.body.id)).toBe(true);
+    expect(mine.body.entries.some((e: { id: string }) => e.id === tied.body.id)).toBe(true);
+
+    // Only barbers can record tips — even admin isn't a barber.
+    const customerToken = (
+      await http
+        .post('/api/v1/auth/register')
+        .send({ email: uniqueEmail('tips'), password: 'Lifestyle!1', firstName: 'No', lastName: 'Tips' })
+        .expect(201)
+    ).body.accessToken;
+    await http.post('/api/v1/team/me/tips').set(auth(customerToken)).send({ amountCents: 100 }).expect(403);
+
+    await prisma.appointment.updateMany({ where: { id: booking.body.id }, data: { status: 'CANCELLED' } });
   });
 });
