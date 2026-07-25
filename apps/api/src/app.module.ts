@@ -8,6 +8,7 @@ import { BookingsModule } from './bookings/bookings.module';
 import { validateEnv } from './config/env.validation';
 import { CouponsModule } from './coupons/coupons.module';
 import { CustomersModule } from './customers/customers.module';
+import { ImportModule } from './import/import.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { LocationsModule } from './locations/locations.module';
 import { LoyaltyModule } from './loyalty/loyalty.module';
@@ -55,6 +56,7 @@ import { WaitingListModule } from './waiting-list/waiting-list.module';
     NotificationsModule,
     ReviewsModule,
     CustomersModule,
+    ImportModule,
   ],
 })
 export class AppModule {}
