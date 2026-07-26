@@ -1,4 +1,4 @@
-import { LedgerTag, Seniority, ServiceKind } from '@ta-spiru/database';
+import { LedgerTag, Seniority, ServiceCategory, ServiceKind } from '@ta-spiru/database';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -28,6 +28,11 @@ export class CreateServiceDto {
 
   @IsEnum(ServiceKind)
   kind!: ServiceKind;
+
+  /** Booking card. Defaults to WASH for wash services, ADDON for barber ones. */
+  @IsOptional()
+  @IsEnum(ServiceCategory)
+  category?: ServiceCategory;
 
   @IsInt()
   @Min(0)
@@ -74,6 +79,11 @@ export class UpdateServiceDto {
   @IsString()
   @MaxLength(120)
   name?: string;
+
+  /** Move the service onto a different booking card. */
+  @IsOptional()
+  @IsEnum(ServiceCategory)
+  category?: ServiceCategory;
 
   @IsOptional()
   @IsInt()

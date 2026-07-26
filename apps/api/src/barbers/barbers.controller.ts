@@ -207,7 +207,13 @@ export class BarbersController {
               ? { locations: { some: { locationId: barber.locationId, isActive: true } } }
               : {}),
           },
-          orderBy: [{ sortOrder: 'asc' }, { priceCents: 'asc' }],
+          // Combos first within each card, then the admin's own ordering.
+          orderBy: [
+            { category: 'asc' },
+            { isComboEligible: 'desc' },
+            { sortOrder: 'asc' },
+            { priceCents: 'asc' },
+          ],
           include: { tiers: true },
         }),
         this.prisma.teamMemberService.findMany({ where: { userId: barber.id } }),
@@ -232,6 +238,8 @@ export class BarbersController {
           slug: svc.slug,
           name: svc.name,
           kind: svc.kind,
+          category: svc.category,
+          sortOrder: svc.sortOrder,
           priceCents: resolved.priceCents,
           durationMin: resolved.durationMin,
           maxDaily: resolved.maxDaily,

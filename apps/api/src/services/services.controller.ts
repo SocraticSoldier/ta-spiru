@@ -14,7 +14,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { Prisma, Role, ServiceKind } from '@ta-spiru/database';
+import { Prisma, Role, ServiceCategory, ServiceKind } from '@ta-spiru/database';
 import { ServiceSummary } from '@ta-spiru/shared';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -28,6 +28,7 @@ import {
 } from './dto/services-admin.dtos';
 
 const TIER_ORDER = { JUNIOR: 0, NORMAL: 1, SENIOR: 2 } as const;
+const CATEGORY_VALUES = new Set<ServiceCategory>(Object.values(ServiceCategory));
 
 @Controller('services')
 export class ServicesController {
@@ -35,13 +36,29 @@ export class ServicesController {
 
   /** Public catalog for the storefront and mobile app. */
   @Get()
-  async list(@Query('kind') kind?: string): Promise<ServiceSummary[]> {
+  async list(
+    @Query('kind') kind?: string,
+    @Query('category') category?: string,
+  ): Promise<ServiceSummary[]> {
     try {
       const kindFilter =
         kind === ServiceKind.BARBER || kind === ServiceKind.WASH ? (kind as ServiceKind) : undefined;
+      const categoryFilter = CATEGORY_VALUES.has(category as ServiceCategory)
+        ? (category as ServiceCategory)
+        : undefined;
       const services = await this.prisma.service.findMany({
-        where: { isActive: true, ...(kindFilter ? { kind: kindFilter } : {}) },
-        orderBy: [{ kind: 'asc' }, { sortOrder: 'asc' }, { priceCents: 'asc' }],
+        where: {
+          isActive: true,
+          ...(kindFilter ? { kind: kindFilter } : {}),
+          ...(categoryFilter ? { category: categoryFilter } : {}),
+        },
+        // Combos first within each card, then the admin's own ordering.
+        orderBy: [
+          { category: 'asc' },
+          { isComboEligible: 'desc' },
+          { sortOrder: 'asc' },
+          { priceCents: 'asc' },
+        ],
         include: { tiers: true },
       });
       return services.map((service) => this.toSummary(service));
@@ -66,6 +83,11 @@ export class ServicesController {
           slug: dto.slug,
           name: dto.name,
           kind: dto.kind,
+          // Wash services always sit on the wash card; barber services default
+          // to add-ons until an admin files them under haircuts or beards.
+          category:
+            dto.category ??
+            (dto.kind === ServiceKind.WASH ? ServiceCategory.WASH : ServiceCategory.ADDON),
           durationMin: dto.durationMin,
           priceCents: dto.priceCents,
           ledgerTag: dto.ledgerTag,
@@ -221,6 +243,8 @@ export class ServicesController {
       slug: service.slug,
       name: service.name,
       kind: service.kind,
+      category: service.category,
+      sortOrder: service.sortOrder,
       durationMin: service.durationMin,
       priceCents: service.priceCents,
       isComboEligible: service.isComboEligible,

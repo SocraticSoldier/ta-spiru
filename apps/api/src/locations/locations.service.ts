@@ -112,6 +112,7 @@ export class LocationsService {
       isBarberOperated: location.isBarberOperated,
       latitude: location.latitude,
       longitude: location.longitude,
+      photoUrl: location.photoUrl,
     };
   }
 }

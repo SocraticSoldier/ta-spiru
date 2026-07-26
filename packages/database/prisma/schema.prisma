@@ -27,6 +27,16 @@ enum ServiceKind {
   WASH
 }
 
+// Which card a service appears on in the customer booking flow. The barber
+// journey walks HAIRCUT -> BEARD -> ADDON, then WASH as an optional extra at
+// branches that have bays (Fgura).
+enum ServiceCategory {
+  HAIRCUT
+  BEARD
+  ADDON
+  WASH
+}
+
 // Barber experience band. Drives which service price/duration tier applies.
 enum Seniority {
   JUNIOR
@@ -149,6 +159,7 @@ model Location {
   address   String
   latitude  Float?
   longitude Float?
+  photoUrl  String? // shop facade, used as the branch card background when booking
   phone     String?
   timezone  String  @default("Europe/Malta")
   isActive  Boolean @default(true)
@@ -331,10 +342,11 @@ model Service {
   description     String?
   photoUrl        String? // shown in the service pop-up on the booking screen
   kind            ServiceKind
+  category        ServiceCategory @default(ADDON) // which booking card it shows on
   durationMin     Int // default duration; barber tiers/overrides may change it
   priceCents      Int // default (NORMAL) price; barber tiers/overrides may change it
   ledgerTag       LedgerTag
-  sortOrder       Int         @default(0) // display order in the app
+  sortOrder       Int         @default(0) // display order within its category
   isComboEligible Boolean     @default(false)
   isActive        Boolean     @default(true)
   isQuoteOnly     Boolean     @default(false) // price given on inspection (e.g. ceramic coating)

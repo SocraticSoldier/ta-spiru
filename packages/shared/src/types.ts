@@ -54,6 +54,8 @@ export interface LocationSummary {
   isBarberOperated: boolean;
   latitude: number | null;
   longitude: number | null;
+  /** Shop facade, used as the branch card background when booking. */
+  photoUrl: string | null;
 }
 
 export interface RevenueSplitLine {
@@ -117,6 +119,27 @@ export interface PosCheckoutResponse {
 }
 
 export type ServiceKindName = 'BARBER' | 'WASH';
+
+/**
+ * Which card a service appears on in the booking flow. The barber journey walks
+ * HAIRCUT -> BEARD -> ADDON; WASH is offered as a final optional card at
+ * branches with wash bays.
+ */
+export type ServiceCategoryName = 'HAIRCUT' | 'BEARD' | 'ADDON' | 'WASH';
+
+export const SERVICE_CATEGORY_ORDER: readonly ServiceCategoryName[] = [
+  'HAIRCUT',
+  'BEARD',
+  'ADDON',
+  'WASH',
+];
+
+export const SERVICE_CATEGORY_LABELS: Readonly<Record<ServiceCategoryName, string>> = {
+  HAIRCUT: 'Haircuts',
+  BEARD: 'Beards',
+  ADDON: 'Add-ons',
+  WASH: 'Car wash',
+};
 
 export type QueueStatusName = 'WAITING' | 'CALLED' | 'IN_SERVICE' | 'COMPLETED' | 'LEFT';
 
@@ -194,6 +217,10 @@ export interface ServiceSummary {
   slug: string;
   name: string;
   kind: ServiceKindName;
+  /** Which booking card this service belongs to. */
+  category: ServiceCategoryName;
+  /** Display order within its category — lower first. Admin-controlled. */
+  sortOrder: number;
   durationMin: number;
   priceCents: number;
   isComboEligible: boolean;
@@ -255,6 +282,10 @@ export interface BarberServiceSummary {
   slug: string;
   name: string;
   kind: ServiceKindName;
+  /** Which booking card this service belongs to. */
+  category: ServiceCategoryName;
+  /** Display order within its category — lower first. Admin-controlled. */
+  sortOrder: number;
   priceCents: number;
   durationMin: number;
   maxDaily: number | null;

@@ -7,6 +7,7 @@ import {
   ResourceKind,
   Role,
   Seniority,
+  ServiceCategory,
   ServiceKind,
 } from '@prisma/client';
 
@@ -25,21 +26,29 @@ interface BranchSeed {
   /** Town-centre coordinates — enough precision to sort branches by distance. */
   latitude: number;
   longitude: number;
+  /** Shop facade, used as the branch card background on the booking screen. */
+  photoUrl: string;
 }
 
+// Facade photos live in apps/web/public/branches/<slug>.jpg. Swap the file to
+// change the picture — no redeploy of this seed needed.
+const facade = (slug: string): string => `/branches/${slug}.jpg`;
+
 const BRANCHES: readonly BranchSeed[] = [
-  { slug: 'naxxar', name: 'Naxxar', address: 'Flagship Barbershop, Naxxar', chairs: 4, bays: 0, latitude: 35.9122, longitude: 14.4394 },
-  { slug: 'pama', name: 'Pama', address: 'Pama Shopping Village, Mosta', chairs: 3, bays: 0, barberOperated: true, virtualQueue: true, latitude: 35.9088, longitude: 14.4256 },
-  { slug: 'san-gwann', name: 'San Ġwann', address: 'San Ġwann', chairs: 3, bays: 0, barberOperated: true, latitude: 35.9089, longitude: 14.4633 },
+  { slug: 'naxxar', name: 'Naxxar', address: 'Flagship Barbershop, Naxxar', chairs: 4, bays: 0, latitude: 35.9122, longitude: 14.4394, photoUrl: facade('naxxar') },
+  { slug: 'pama', name: 'Pama', address: 'Pama Shopping Village, Mosta', chairs: 3, bays: 0, barberOperated: true, virtualQueue: true, latitude: 35.9088, longitude: 14.4256, photoUrl: facade('pama') },
+  { slug: 'san-gwann', name: 'San Ġwann', address: 'San Ġwann', chairs: 3, bays: 0, barberOperated: true, latitude: 35.9089, longitude: 14.4633, photoUrl: facade('san-gwann') },
   // Fgura: barbershop + the car wash / detailing centre next door on Zabbar Road.
-  { slug: 'fgura', name: 'Fgura', address: 'Barbershop & Car Wash, Zabbar Road, Fgura', chairs: 2, bays: 2, latitude: 35.8747, longitude: 14.5223 },
-  { slug: 'san-giljan', name: "San Ġiljan – St George's Mall", address: "St George's Mall, San Ġiljan", chairs: 3, bays: 0, barberOperated: true, latitude: 35.9203, longitude: 14.4881 },
+  { slug: 'fgura', name: 'Fgura', address: 'Barbershop & Car Wash, Zabbar Road, Fgura', chairs: 2, bays: 2, latitude: 35.8747, longitude: 14.5223, photoUrl: facade('fgura') },
+  { slug: 'san-giljan', name: "San Ġiljan – St George's Mall", address: "St George's Mall, San Ġiljan", chairs: 3, bays: 0, barberOperated: true, latitude: 35.9203, longitude: 14.4881, photoUrl: facade('san-giljan') },
 ];
 
 interface ServiceSeed {
   slug: string;
   name: string;
   kind: ServiceKind;
+  /** Which booking card it shows on. Defaults to WASH for wash services. */
+  category?: ServiceCategory;
   durationMin: number;
   priceCents: number;
   ledgerTag: LedgerTag;
@@ -47,6 +56,12 @@ interface ServiceSeed {
   isQuoteOnly?: boolean;
   tiered?: boolean; // barber haircuts: create Junior/Normal/Senior price tiers
 }
+
+/** Stamps a category onto a group of services so the seed rows stay readable. */
+const inCategory = (
+  category: ServiceCategory,
+  rows: readonly Omit<ServiceSeed, 'category'>[],
+): ServiceSeed[] => rows.map((row) => ({ ...row, category }));
 
 // Real Ta' Spiru menus. Barber = Haircuts + Beard Grooming + Pampering (all BARBER).
 // Car wash = size-priced washes as discrete rows (Small / Medium / Large-SUV),
@@ -58,7 +73,8 @@ const B = ServiceKind.BARBER;
 const W = ServiceKind.WASH;
 
 const SERVICES: readonly ServiceSeed[] = [
-  // ── Barber · Haircuts ──
+  // ── Barber · Haircuts (card 1) ──
+  ...inCategory(ServiceCategory.HAIRCUT, [
   { tiered: true, slug: 'boy-haircut', name: "Boy's Haircut (0-5 yrs)", kind: B, durationMin: 25, priceCents: 1100, ledgerTag: HAIR, isComboEligible: false },
   { tiered: true, slug: 'boy-scissors-haircut', name: "Boy's Scissors Haircut (0-5 yrs)", kind: B, durationMin: 30, priceCents: 1300, ledgerTag: HAIR, isComboEligible: false },
   { tiered: true, slug: 'haircut', name: 'Haircut', kind: B, durationMin: 30, priceCents: 1200, ledgerTag: HAIR, isComboEligible: true },
@@ -71,13 +87,17 @@ const SERVICES: readonly ServiceSeed[] = [
   { tiered: true, slug: 'long-scissors-haircut', name: 'Long Scissors Haircut', kind: B, durationMin: 45, priceCents: 1600, ledgerTag: HAIR, isComboEligible: true },
   { tiered: true, slug: 'senior-haircut', name: '+65 Haircut', kind: B, durationMin: 40, priceCents: 1600, ledgerTag: HAIR, isComboEligible: true },
   { tiered: true, slug: 'hairstyling', name: 'Hairstyling', kind: B, durationMin: 15, priceCents: 600, ledgerTag: HAIR, isComboEligible: false },
-  // ── Barber · Beard Grooming ──
+  ]),
+  // ── Barber · Beard Grooming (card 2) ──
+  ...inCategory(ServiceCategory.BEARD, [
   { slug: 'beard-grooming', name: 'Beard Grooming', kind: B, durationMin: 20, priceCents: 800, ledgerTag: HAIR, isComboEligible: false },
   { slug: 'beard-clean-shave', name: 'Beard Clean Shave', kind: B, durationMin: 20, priceCents: 800, ledgerTag: HAIR, isComboEligible: false },
   { slug: 'hot-towel-beard-grooming', name: 'Hot Towel Beard Grooming', kind: B, durationMin: 25, priceCents: 1000, ledgerTag: HAIR, isComboEligible: false },
   { slug: 'hot-towel-beard-clean-shave', name: 'Hot Towel Beard Clean Shave', kind: B, durationMin: 25, priceCents: 1000, ledgerTag: HAIR, isComboEligible: false },
   { slug: 'premium-beard-clean-shave', name: 'Premium Beard Clean Shave', kind: B, durationMin: 25, priceCents: 1000, ledgerTag: HAIR, isComboEligible: false },
-  // ── Barber · Pampering ──
+  ]),
+  // ── Barber · Pampering & add-ons (card 3) ──
+  ...inCategory(ServiceCategory.ADDON, [
   { slug: 'shampoo-wash', name: 'Shampoo Wash', kind: B, durationMin: 10, priceCents: 300, ledgerTag: HAIR, isComboEligible: false },
   { slug: 'hair-scalp-treatment', name: 'Hair Scalp Treatment', kind: B, durationMin: 20, priceCents: 1000, ledgerTag: HAIR, isComboEligible: false },
   { slug: 'nose-waxing', name: 'Nose Waxing', kind: B, durationMin: 10, priceCents: 400, ledgerTag: HAIR, isComboEligible: false },
@@ -86,7 +106,9 @@ const SERVICES: readonly ServiceSeed[] = [
   { slug: 'complete-waxing-service', name: 'Complete Waxing Service', kind: B, durationMin: 25, priceCents: 1100, ledgerTag: HAIR, isComboEligible: false },
   { slug: 'black-mask', name: 'Black Mask', kind: B, durationMin: 15, priceCents: 600, ledgerTag: HAIR, isComboEligible: false },
   { slug: 'complete-pampering-service', name: 'Complete Pampering Service', kind: B, durationMin: 60, priceCents: 4000, ledgerTag: HAIR, isComboEligible: false },
+  ]),
   // ── Car wash · size-priced washes (Small / Medium / Large-SUV) ──
+  ...inCategory(ServiceCategory.WASH, [
   { slug: 'interior-wash', name: 'Interior Wash (Small)', kind: W, durationMin: 40, priceCents: 1800, ledgerTag: WASH, isComboEligible: true },
   { slug: 'interior-wash-medium', name: 'Interior Wash (Medium)', kind: W, durationMin: 40, priceCents: 2000, ledgerTag: WASH, isComboEligible: true },
   { slug: 'interior-wash-large', name: 'Interior Wash (Large / SUV)', kind: W, durationMin: 40, priceCents: 2200, ledgerTag: WASH, isComboEligible: true },
@@ -110,6 +132,7 @@ const SERVICES: readonly ServiceSeed[] = [
   { slug: 'paint-correction', name: 'Paint Correction', kind: W, durationMin: 180, priceCents: 0, ledgerTag: WASH, isComboEligible: false, isQuoteOnly: true },
   { slug: 'ceramic-coating', name: 'Ceramic Coating', kind: W, durationMin: 240, priceCents: 0, ledgerTag: WASH, isComboEligible: false, isQuoteOnly: true },
   { slug: 'premium-valet', name: 'Premium Valeting', kind: W, durationMin: 120, priceCents: 0, ledgerTag: WASH, isComboEligible: false, isQuoteOnly: true },
+  ]),
 ];
 
 // The car wash / detailing centre is a single site on Zabbar Road, Fgura, next
@@ -239,6 +262,7 @@ const main = async (): Promise<void> => {
         address: branch.address,
         latitude: branch.latitude,
         longitude: branch.longitude,
+        photoUrl: branch.photoUrl,
         isBarberOperated: branch.barberOperated ?? false,
         virtualQueueEnabled: branch.virtualQueue ?? false,
       },
@@ -248,6 +272,7 @@ const main = async (): Promise<void> => {
         address: branch.address,
         latitude: branch.latitude,
         longitude: branch.longitude,
+        photoUrl: branch.photoUrl,
         isBarberOperated: branch.barberOperated ?? false,
         virtualQueueEnabled: branch.virtualQueue ?? false,
       },
@@ -278,10 +303,17 @@ const main = async (): Promise<void> => {
   }
 
   const locations = await prisma.location.findMany({ select: { id: true, slug: true } });
+  // Starting display order within each card: position in the list above, x10 so
+  // Norbert can slot a new service between two existing ones without a reshuffle.
+  const orderInCategory = new Map<ServiceCategory, number>();
   for (const spec of SERVICES) {
+    const category = spec.category ?? ServiceCategory.ADDON;
+    const nextOrder = (orderInCategory.get(category) ?? 0) + 10;
+    orderInCategory.set(category, nextOrder);
     const data = {
       name: spec.name,
       kind: spec.kind,
+      category,
       durationMin: spec.durationMin,
       priceCents: spec.priceCents,
       ledgerTag: spec.ledgerTag,
@@ -291,8 +323,9 @@ const main = async (): Promise<void> => {
     };
     const service = await prisma.service.upsert({
       where: { slug: spec.slug },
+      // sortOrder is create-only: re-seeding must not undo an admin's reordering.
       update: data,
-      create: { slug: spec.slug, ...data },
+      create: { slug: spec.slug, ...data, sortOrder: nextOrder },
     });
     // Barber services are offered everywhere; wash/detailing only at wash-capable branches.
     const targets =
