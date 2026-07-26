@@ -59,6 +59,8 @@ export interface VisitBookingResult {
   startsAt: string;
   endsAt: string;
   totalCents: number;
+  /** Set when a car wash was taken alongside the visit. */
+  washAppointmentId: string | null;
 }
 
 /** Postgres serialization failure / deadlock, surfaced by Prisma. */
@@ -853,6 +855,33 @@ export class BookingsService {
         throw new BadRequestException('Barber not found at this branch');
       }
 
+      // Optional car wash taken alongside the visit, on a bay, in parallel.
+      if ((dto.washServiceId && !dto.washBayId) || (dto.washBayId && !dto.washServiceId)) {
+        throw new BadRequestException('A car wash needs both washServiceId and washBayId');
+      }
+      const washService = dto.washServiceId
+        ? await this.prisma.service.findFirst({
+            where: { id: dto.washServiceId, isActive: true, kind: ServiceKind.WASH },
+          })
+        : null;
+      if (dto.washServiceId && !washService) {
+        throw new BadRequestException('Car wash service not found, inactive, or not a wash service');
+      }
+      const washBay = dto.washBayId
+        ? await this.prisma.resource.findFirst({
+            where: {
+              id: dto.washBayId,
+              locationId: dto.locationId,
+              kind: ResourceKind.WASH_BAY,
+              isActive: true,
+            },
+            select: { id: true },
+          })
+        : null;
+      if (dto.washBayId && !washBay) {
+        throw new BadRequestException('Wash bay not found at this branch');
+      }
+
       if (dto.memberId) {
         const member = await this.prisma.accountMember.findFirst({
           where: { id: dto.memberId, accountId: customerId },
@@ -888,12 +917,24 @@ export class BookingsService {
       const visitEnd = cursor;
       const visitGroupId = randomUUID();
 
-      const appointmentIds = await this.bookSerializable(
+      // The bay is held for the wash itself or for the whole time the customer
+      // is in the chair (plus the handover buffer), whichever runs longer.
+      const bayLockEnd = washService
+        ? addMinutes(
+            startsAt,
+            Math.max(
+              washService.durationMin,
+              (visitEnd.getTime() - startsAt.getTime()) / 60000 + COMBO_WASH_BUFFER_MIN,
+            ),
+          )
+        : visitEnd;
+
+      const created = await this.bookSerializable(
         async (tx) => {
           const blockConflict = await tx.timeBlock.findFirst({
             where: {
               locationId: dto.locationId,
-              startsAt: { lt: visitEnd },
+              startsAt: { lt: bayLockEnd },
               endsAt: { gt: startsAt },
               OR: [{ barberId: null }, { barberId: dto.barberId }],
             },
@@ -918,7 +959,22 @@ export class BookingsService {
             throw new ConflictException('Selected barber is no longer available for this slot');
           }
 
-          const created: string[] = [];
+          if (washService && washBay) {
+            const bayConflict = await tx.appointment.findFirst({
+              where: {
+                resourceId: washBay.id,
+                status: { in: [...ACTIVE_STATUSES] },
+                startsAt: { lt: bayLockEnd },
+                lockedUntil: { gt: startsAt },
+              },
+              select: { id: true },
+            });
+            if (bayConflict) {
+              throw new ConflictException('Selected wash bay is no longer available for this slot');
+            }
+          }
+
+          const barberAppointmentIds: string[] = [];
           for (const segment of segments) {
             await this.assertDailyCap(
               tx,
@@ -941,21 +997,50 @@ export class BookingsService {
                 comboGroupId: visitGroupId,
                 memberId: dto.memberId ?? null,
                 notes: dto.notes ?? null,
+                vehicleReg: dto.vehicleReg ?? null,
               },
               select: { id: true },
             });
-            created.push(appointment.id);
+            barberAppointmentIds.push(appointment.id);
           }
-          return created;
+
+          let washAppointmentId: string | null = null;
+          if (washService && washBay) {
+            const wash = await tx.appointment.create({
+              data: {
+                locationId: dto.locationId,
+                customerId,
+                serviceId: washService.id,
+                resourceId: washBay.id,
+                startsAt,
+                endsAt: addMinutes(startsAt, washService.durationMin),
+                lockedUntil: bayLockEnd,
+                priceCentsSnapshot: washService.priceCents,
+                source,
+                comboGroupId: visitGroupId,
+                memberId: dto.memberId ?? null,
+                vehicleReg: dto.vehicleReg ?? null,
+              },
+              select: { id: true },
+            });
+            washAppointmentId = wash.id;
+          }
+
+          return { barberAppointmentIds, washAppointmentId };
         },
       );
 
       return {
         visitGroupId,
-        appointmentIds,
+        appointmentIds: created.washAppointmentId
+          ? [...created.barberAppointmentIds, created.washAppointmentId]
+          : created.barberAppointmentIds,
         startsAt: startsAt.toISOString(),
         endsAt: visitEnd.toISOString(),
-        totalCents: segments.reduce((sum, segment) => sum + segment.priceCents, 0),
+        totalCents:
+          segments.reduce((sum, segment) => sum + segment.priceCents, 0) +
+          (washService?.priceCents ?? 0),
+        washAppointmentId: created.washAppointmentId,
       };
     } catch (error) {
       if (error instanceof HttpException) {

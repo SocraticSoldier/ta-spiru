@@ -35,6 +35,27 @@ export class CreateVisitDto {
   barberId!: string;
 
   /**
+   * Optional car wash taken alongside the visit (Fgura only). The car is washed
+   * on a bay while the customer is in the chair, so this runs in parallel with
+   * the barber segments rather than after them.
+   */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  washServiceId?: string;
+
+  /** Required when washServiceId is given. */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  washBayId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(16)
+  vehicleReg?: string;
+
+  /**
    * Staff only: book on behalf of this customer. Ignored for customers booking
    * for themselves.
    */

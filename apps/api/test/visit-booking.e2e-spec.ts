@@ -232,6 +232,94 @@ describe('Multi-service visits (e2e)', () => {
       .expect(400);
   });
 
+  it('washes the car alongside the visit at Fgura, not after it', async () => {
+    const fguraId = (await prisma.location.findUniqueOrThrow({ where: { slug: 'fgura' } })).id;
+    const wash = await prisma.service.findUniqueOrThrow({ where: { slug: 'exterior-wash' } });
+    const bay = await prisma.resource.findFirstOrThrow({
+      where: { locationId: fguraId, kind: 'WASH_BAY', isActive: true },
+    });
+
+    const slots = await http
+      .get('/api/v1/bookings/availability')
+      .query({ locationId: fguraId, date, serviceId: haircutId, extraServiceIds: beardId })
+      .expect(200);
+    const slot = slots.body[0];
+    expect(slot).toBeDefined();
+
+    const visit = await http
+      .post('/api/v1/bookings/visit')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        locationId: fguraId,
+        serviceIds: [haircutId, beardId],
+        startsAt: slot.startsAt,
+        barberId: slot.barberId,
+        washServiceId: wash.id,
+        washBayId: bay.id,
+        vehicleReg: 'ABC 123',
+      })
+      .expect(201);
+
+    expect(visit.body.washAppointmentId).not.toBeNull();
+    expect(visit.body.appointmentIds).toHaveLength(3); // 2 barber segments + the wash
+
+    const washRow = await prisma.appointment.findUniqueOrThrow({
+      where: { id: visit.body.washAppointmentId },
+      select: { startsAt: true, resourceId: true, comboGroupId: true, vehicleReg: true },
+    });
+    // The car goes on the bay as the customer sits down, not once they are done.
+    expect(washRow.startsAt.toISOString()).toBe(visit.body.startsAt);
+    expect(washRow.resourceId).toBe(bay.id);
+    expect(washRow.comboGroupId).toBe(visit.body.visitGroupId);
+    expect(washRow.vehicleReg).toBe('ABC 123');
+  });
+
+  it('rejects a car wash given without a bay', async () => {
+    const wash = await prisma.service.findUniqueOrThrow({ where: { slug: 'exterior-wash' } });
+    const slots = await http
+      .get('/api/v1/bookings/availability')
+      .query({ locationId: naxxarId, date, serviceId: haircutId })
+      .expect(200);
+
+    await http
+      .post('/api/v1/bookings/visit')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        locationId: naxxarId,
+        serviceIds: [haircutId],
+        startsAt: slots.body[0].startsAt,
+        barberId: slots.body[0].barberId,
+        washServiceId: wash.id,
+      })
+      .expect(400);
+  });
+
+  it('will not put a car on a bay at a branch that has none', async () => {
+    const wash = await prisma.service.findUniqueOrThrow({ where: { slug: 'exterior-wash' } });
+    const fguraId = (await prisma.location.findUniqueOrThrow({ where: { slug: 'fgura' } })).id;
+    const fguraBay = await prisma.resource.findFirstOrThrow({
+      where: { locationId: fguraId, kind: 'WASH_BAY' },
+    });
+    const slots = await http
+      .get('/api/v1/bookings/availability')
+      .query({ locationId: naxxarId, date, serviceId: haircutId })
+      .expect(200);
+
+    // Naxxar has no bays, so Fgura's bay must not be bookable through it.
+    await http
+      .post('/api/v1/bookings/visit')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        locationId: naxxarId,
+        serviceIds: [haircutId],
+        startsAt: slots.body[0].startsAt,
+        barberId: slots.body[0].barberId,
+        washServiceId: wash.id,
+        washBayId: fguraBay.id,
+      })
+      .expect(400);
+  });
+
   it('requires a signed-in customer', async () => {
     await http
       .post('/api/v1/bookings/visit')
