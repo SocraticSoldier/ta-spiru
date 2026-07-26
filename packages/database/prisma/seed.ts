@@ -289,17 +289,39 @@ const main = async (): Promise<void> => {
     for (let i = 1; i <= branch.chairs; i += 1) {
       await prisma.resource.upsert({
         where: { locationId_name: { locationId: location.id, name: `Chair ${i}` } },
-        update: {},
+        update: { isActive: true },
         create: { locationId: location.id, kind: ResourceKind.BARBER_CHAIR, name: `Chair ${i}` },
       });
     }
     for (let i = 1; i <= branch.bays; i += 1) {
       await prisma.resource.upsert({
         where: { locationId_name: { locationId: location.id, name: `Bay ${i}` } },
-        update: {},
+        update: { isActive: true },
         create: { locationId: location.id, kind: ResourceKind.WASH_BAY, name: `Bay ${i}` },
       });
     }
+
+    // Retire chairs and bays the branch no longer has. Without this a bay that
+    // was removed from the config above stays live in an existing database, and
+    // the booking flow keeps offering a car wash at a branch that hasn't got one.
+    // Deactivated rather than deleted so past appointments keep their resource.
+    await prisma.resource.updateMany({
+      where: {
+        locationId: location.id,
+        isActive: true,
+        OR: [
+          {
+            kind: ResourceKind.BARBER_CHAIR,
+            name: { notIn: Array.from({ length: branch.chairs }, (_, i) => `Chair ${i + 1}`) },
+          },
+          {
+            kind: ResourceKind.WASH_BAY,
+            name: { notIn: Array.from({ length: branch.bays }, (_, i) => `Bay ${i + 1}`) },
+          },
+        ],
+      },
+      data: { isActive: false },
+    });
   }
 
   const locations = await prisma.location.findMany({ select: { id: true, slug: true } });

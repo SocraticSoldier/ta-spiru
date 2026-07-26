@@ -6,15 +6,11 @@ import type { JSX } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type {
   AvailabilitySlot,
-  ComboSlot,
+  BarberSummary,
   LocationSummary,
   ServiceSummary,
 } from '@ta-spiru/shared';
-import {
-  bookCombo,
-  bookSingle,
-  type BookingActionResult,
-} from '@/app/book/actions';
+import { bookSingle, bookVisit, type BookingActionResult } from '@/app/book/actions';
 import { AuthForm } from '@/components/auth-form';
 import { KIND_COLORS } from '@/lib/colors';
 import { formatEuro } from '@/lib/format';
@@ -22,39 +18,19 @@ import { formatTimeMalta, shiftDate, todayMalta } from '@/lib/time';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
-type Stream = 'CUT' | 'WASH' | 'COMBO';
+/**
+ * Two journeys: the barber one walks Haircuts -> Beards -> Add-ons and ends with
+ * the car wash at branches that have bays, and the wash-only one comes in from
+ * the car wash side of the storefront.
+ */
+type Stream = 'CUT' | 'WASH';
 
-interface StreamSpec {
-  key: Stream;
-  title: string;
-  mark: string;
-  copy: string;
-  accent: { solid: string; soft: string; text: string };
-}
-
-const STREAMS: readonly StreamSpec[] = [
-  {
-    key: 'CUT',
-    title: 'A Cut',
-    mark: 'The Barber',
-    copy: 'Fades, cuts, beard sculpting and treatments.',
-    accent: KIND_COLORS.BARBER,
-  },
-  {
-    key: 'WASH',
-    title: 'A Wash',
-    mark: 'The Car Wash',
-    copy: 'Washes, valeting and detailing for your car.',
-    accent: KIND_COLORS.WASH,
-  },
-  {
-    key: 'COMBO',
-    title: 'Combo Wash & Cut',
-    mark: 'The Barber + The Car Wash',
-    copy: 'Your car detailed while you get sharp — one slot, both done.',
-    accent: KIND_COLORS.BARBER,
-  },
-];
+const asStream = (raw: string | undefined): Stream | null => {
+  // COMBO used to be its own journey; the wash card at Fgura is now that path.
+  if (raw === 'CUT' || raw === 'COMBO') return 'CUT';
+  if (raw === 'WASH') return 'WASH';
+  return null;
+};
 
 interface Coords {
   lat: number;
@@ -95,19 +71,66 @@ interface SelectedSlot {
   label: string;
 }
 
+interface BarberRating {
+  average: number | null;
+  count: number;
+}
+
+const priceLabel = (service: ServiceSummary): string =>
+  service.isQuoteOnly ? 'On inspection' : formatEuro(service.priceCents);
+
+/** One row on a service card. */
+const ServiceRow = ({
+  service,
+  selected,
+  onSelect,
+}: {
+  service: ServiceSummary;
+  selected: boolean;
+  onSelect: () => void;
+}): JSX.Element => (
+  <button
+    type="button"
+    onClick={onSelect}
+    aria-pressed={selected}
+    className={`flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition ${
+      selected
+        ? 'border-bronze bg-bronze/10'
+        : 'border-white/10 bg-graphite-deep/40 hover:border-white/25'
+    }`}
+  >
+    <span className="min-w-0">
+      <span className="block truncate font-medium">{service.name}</span>
+      <span className="mt-0.5 block text-xs text-white/45">
+        {service.durationMin} min
+        {service.isComboEligible ? ' · Combo' : ''}
+        {service.description ? ` · ${service.description}` : ''}
+      </span>
+    </span>
+    <span className="shrink-0 text-sm text-bronze-light">{priceLabel(service)}</span>
+  </button>
+);
+
 export const BookingWizard = ({ initialStream }: { initialStream?: string }): JSX.Element => {
-  const [stream, setStream] = useState<Stream | null>(
-    initialStream === 'CUT' || initialStream === 'WASH' || initialStream === 'COMBO'
-      ? initialStream
-      : null,
-  );
+  const [stream, setStream] = useState<Stream | null>(asStream(initialStream));
   const [locations, setLocations] = useState<LocationSummary[]>([]);
   const [services, setServices] = useState<ServiceSummary[]>([]);
   const [loadFailed, setLoadFailed] = useState(false);
 
   const [locationId, setLocationId] = useState<string | null>(null);
-  const [barberServiceId, setBarberServiceId] = useState<string | null>(null);
+  const [barbers, setBarbers] = useState<BarberSummary[]>([]);
+  const [ratings, setRatings] = useState<Record<string, BarberRating>>({});
+  const [barberId, setBarberId] = useState<string | null>(null);
+  const [barberChosen, setBarberChosen] = useState(false); // "Any barber" is a choice too
+
+  const [haircutId, setHaircutId] = useState<string | null>(null);
+  const [beardId, setBeardId] = useState<string | null>(null);
+  const [beardSkipped, setBeardSkipped] = useState(false);
+  const [addonIds, setAddonIds] = useState<string[]>([]);
+  const [addonsDone, setAddonsDone] = useState(false);
   const [washServiceId, setWashServiceId] = useState<string | null>(null);
+  const [washDone, setWashDone] = useState(false);
+
   const [date, setDate] = useState<string>(shiftDate(todayMalta(), 1));
   const [slots, setSlots] = useState<SelectedSlot[] | null>(null);
   const [slotsLoading, setSlotsLoading] = useState(false);
@@ -149,31 +172,107 @@ export const BookingWizard = ({ initialStream }: { initialStream?: string }): JS
       .catch(() => setLoadFailed(true));
   }, []);
 
-  const spec = STREAMS.find((candidate) => candidate.key === stream) ?? null;
-  const needsWashBay = stream === 'WASH' || stream === 'COMBO';
-  const eligibleBranches = needsWashBay ? locations.filter((location) => location.bayCount > 0) : locations;
+  // The barber comes before the services now, so their list loads with the branch.
+  useEffect(() => {
+    if (!locationId || stream !== 'CUT') {
+      setBarbers([]);
+      return;
+    }
+    let cancelled = false;
+    fetchJson<BarberSummary[]>(`/barbers?locationId=${locationId}`)
+      .then((loaded) => {
+        if (cancelled) return;
+        setBarbers(loaded);
+        loaded.forEach((barber) => {
+          fetchJson<BarberRating>(`/reviews/barber/${barber.id}`)
+            .then((rating) => {
+              if (!cancelled) {
+                setRatings((prev) => ({ ...prev, [barber.id]: rating }));
+              }
+            })
+            .catch(() => undefined);
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setBarbers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [locationId, stream]);
+
+  const branch = locations.find((location) => location.id === locationId) ?? null;
+  const branchHasWash = (branch?.bayCount ?? 0) > 0;
+  const needsWashBay = stream === 'WASH' || (stream === 'CUT' && washServiceId !== null);
+
+  const eligibleBranches = stream === 'WASH' ? locations.filter((l) => l.bayCount > 0) : locations;
   const branches = coords
     ? [...eligibleBranches].sort((a, b) => {
-        const distA = a.latitude !== null && a.longitude !== null ? distanceKm(coords, { lat: a.latitude, lng: a.longitude }) : Infinity;
-        const distB = b.latitude !== null && b.longitude !== null ? distanceKm(coords, { lat: b.latitude, lng: b.longitude }) : Infinity;
+        const distA =
+          a.latitude !== null && a.longitude !== null
+            ? distanceKm(coords, { lat: a.latitude, lng: a.longitude })
+            : Infinity;
+        const distB =
+          b.latitude !== null && b.longitude !== null
+            ? distanceKm(coords, { lat: b.latitude, lng: b.longitude })
+            : Infinity;
         return distA - distB;
       })
     : eligibleBranches;
-  const barberServices = services.filter(
-    (service) => service.kind === 'BARBER' && (stream !== 'COMBO' || service.isComboEligible),
+
+  const inCategory = useCallback(
+    (category: ServiceSummary['category']): ServiceSummary[] =>
+      // The API already returns combos first, then the admin's own ordering.
+      services.filter((service) => service.category === category),
+    [services],
   );
-  const washServices = services.filter(
-    (service) => service.kind === 'WASH' && (stream !== 'COMBO' || service.isComboEligible),
-  );
+  const haircuts = inCategory('HAIRCUT');
+  const beards = inCategory('BEARD');
+  const addons = inCategory('ADDON');
+  const washes = inCategory('WASH');
+
   const dates = useMemo(() => {
     const today = todayMalta();
     return Array.from({ length: 14 }, (_, index) => shiftDate(today, index + 1));
   }, []);
 
+  const chosenServices = useMemo((): ServiceSummary[] => {
+    if (stream === 'WASH') {
+      const wash = washes.find((service) => service.id === washServiceId);
+      return wash ? [wash] : [];
+    }
+    const picked: ServiceSummary[] = [];
+    const haircut = haircuts.find((service) => service.id === haircutId);
+    if (haircut) picked.push(haircut);
+    const beard = beards.find((service) => service.id === beardId);
+    if (beard) picked.push(beard);
+    for (const id of addonIds) {
+      const addon = addons.find((service) => service.id === id);
+      if (addon) picked.push(addon);
+    }
+    const wash = washes.find((service) => service.id === washServiceId);
+    if (wash) picked.push(wash);
+    return picked;
+  }, [stream, haircuts, beards, addons, washes, haircutId, beardId, addonIds, washServiceId]);
+
+  const totalCents = chosenServices.reduce((sum, service) => sum + service.priceCents, 0);
+  const hasQuoteOnly = chosenServices.some((service) => service.isQuoteOnly);
+
+  // Barber segments only — the wash runs in parallel on a bay.
+  const barberServiceIds = useMemo(
+    (): string[] =>
+      [haircutId, beardId, ...addonIds].filter((id): id is string => Boolean(id)),
+    [haircutId, beardId, addonIds],
+  );
+
+  // Which cards have been dealt with, in order.
+  const readyForBeard = stream === 'CUT' && haircutId !== null;
+  const readyForAddons = readyForBeard && (beardId !== null || beardSkipped);
+  const readyForWash = readyForAddons && addonsDone && branchHasWash;
   const servicesChosen =
-    stream === 'CUT' ? barberServiceId !== null
-    : stream === 'WASH' ? washServiceId !== null
-    : barberServiceId !== null && washServiceId !== null;
+    stream === 'WASH'
+      ? washServiceId !== null
+      : readyForAddons && addonsDone && (!branchHasWash || washDone);
 
   const loadSlots = useCallback(async (): Promise<void> => {
     if (!stream || !locationId || !servicesChosen) {
@@ -183,52 +282,78 @@ export const BookingWizard = ({ initialStream }: { initialStream?: string }): JS
     setSlot(null);
     setSlots(null);
     try {
-      if (stream === 'COMBO') {
-        const combo = await fetchJson<ComboSlot[]>(
-          `/bookings/combo-availability?locationId=${locationId}&date=${date}&barberServiceId=${barberServiceId}&washServiceId=${washServiceId}`,
-        );
-        setSlots(
-          combo.map((entry) => ({
-            startsAt: entry.startsAt,
-            barberId: entry.barberId,
-            barberName: entry.barberName,
-            washBayId: entry.washBayId,
-            label: `${formatTimeMalta(entry.startsAt)} · ${entry.barberName} · ${entry.washBayName}`,
-          })),
-        );
-      } else {
-        const serviceId = stream === 'CUT' ? barberServiceId : washServiceId;
-        const single = await fetchJson<AvailabilitySlot[]>(
-          `/bookings/availability?locationId=${locationId}&date=${date}&serviceId=${serviceId}`,
-        );
-        setSlots(
-          single.map((entry) => ({
-            startsAt: entry.startsAt,
-            barberId: entry.barberId,
-            barberName: entry.barberName,
-            washBayId: entry.resourceId,
-            label: `${formatTimeMalta(entry.startsAt)}${entry.barberName ? ` · ${entry.barberName}` : ''}${entry.resourceName ? ` · ${entry.resourceName}` : ''}`,
-          })),
-        );
+      const serviceId = stream === 'WASH' ? washServiceId : barberServiceIds[0];
+      if (!serviceId) {
+        setSlots([]);
+        return;
       }
+      const query = new URLSearchParams({ locationId, date, serviceId });
+      if (stream === 'CUT') {
+        const extras = barberServiceIds.slice(1);
+        if (extras.length > 0) query.set('extraServiceIds', extras.join(','));
+        if (barberId) query.set('barberId', barberId);
+      }
+      const found = await fetchJson<AvailabilitySlot[]>(`/bookings/availability?${query}`);
+      setSlots(
+        found.map((entry) => ({
+          startsAt: entry.startsAt,
+          barberId: entry.barberId,
+          barberName: entry.barberName,
+          washBayId: entry.resourceId,
+          label: `${formatTimeMalta(entry.startsAt)}${entry.barberName ? ` · ${entry.barberName}` : ''}${
+            entry.resourceName ? ` · ${entry.resourceName}` : ''
+          }`,
+        })),
+      );
     } catch {
       setSlots([]);
     } finally {
       setSlotsLoading(false);
     }
-  }, [stream, locationId, servicesChosen, date, barberServiceId, washServiceId]);
+  }, [stream, locationId, servicesChosen, date, washServiceId, barberServiceIds, barberId]);
 
   useEffect(() => {
     void loadSlots();
   }, [loadSlots]);
 
-  const totalCents =
-    (stream !== 'WASH' && barberServiceId
-      ? (barberServices.find((service) => service.id === barberServiceId)?.priceCents ?? 0)
-      : 0) +
-    (stream !== 'CUT' && washServiceId
-      ? (washServices.find((service) => service.id === washServiceId)?.priceCents ?? 0)
-      : 0);
+  // A wash needs a free bay, which the barber slot search does not look for.
+  const [washBayId, setWashBayId] = useState<string | null>(null);
+  useEffect(() => {
+    if (stream !== 'CUT' || !washServiceId || !locationId || !slot) {
+      setWashBayId(null);
+      return;
+    }
+    let cancelled = false;
+    fetchJson<AvailabilitySlot[]>(
+      `/bookings/availability?locationId=${locationId}&date=${date}&serviceId=${washServiceId}`,
+    )
+      .then((washSlots) => {
+        if (cancelled) return;
+        const atSameTime = washSlots.find((entry) => entry.startsAt === slot.startsAt);
+        setWashBayId(atSameTime?.resourceId ?? washSlots[0]?.resourceId ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setWashBayId(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [stream, washServiceId, locationId, date, slot]);
+
+  const resetFromBranch = (nextLocationId: string): void => {
+    setLocationId(nextLocationId);
+    setBarberId(null);
+    setBarberChosen(false);
+    setHaircutId(null);
+    setBeardId(null);
+    setBeardSkipped(false);
+    setAddonIds([]);
+    setAddonsDone(false);
+    setWashServiceId(null);
+    setWashDone(false);
+    setSlot(null);
+    setSlots(null);
+  };
 
   const submitBooking = useCallback(async (): Promise<void> => {
     if (!stream || !locationId || !slot) {
@@ -237,23 +362,23 @@ export const BookingWizard = ({ initialStream }: { initialStream?: string }): JS
     setPhase('booking');
     setError(null);
     const outcome =
-      stream === 'COMBO'
-        ? await bookCombo({
+      stream === 'WASH'
+        ? await bookSingle({
             locationId,
+            serviceId: washServiceId ?? '',
             startsAt: slot.startsAt,
-            barberServiceId: barberServiceId ?? '',
-            washServiceId: washServiceId ?? '',
-            barberId: slot.barberId ?? '',
-            washBayId: slot.washBayId ?? '',
+            barberId: null,
+            washBayId: slot.washBayId,
             vehicleReg,
           })
-        : await bookSingle({
+        : await bookVisit({
             locationId,
-            serviceId: (stream === 'CUT' ? barberServiceId : washServiceId) ?? '',
+            serviceIds: barberServiceIds,
             startsAt: slot.startsAt,
-            barberId: slot.barberId,
-            washBayId: slot.washBayId,
-            vehicleReg: needsWashBay ? vehicleReg : undefined,
+            barberId: slot.barberId ?? barberId ?? '',
+            washServiceId,
+            washBayId,
+            vehicleReg: washServiceId ? vehicleReg : undefined,
           });
 
     if (outcome.status === 'auth-required') {
@@ -268,7 +393,17 @@ export const BookingWizard = ({ initialStream }: { initialStream?: string }): JS
     }
     setResult(outcome);
     setPhase('done');
-  }, [stream, locationId, slot, barberServiceId, washServiceId, vehicleReg, needsWashBay, loadSlots]);
+  }, [
+    stream,
+    locationId,
+    slot,
+    washServiceId,
+    washBayId,
+    barberServiceIds,
+    barberId,
+    vehicleReg,
+    loadSlots,
+  ]);
 
   if (loadFailed) {
     return (
@@ -282,24 +417,25 @@ export const BookingWizard = ({ initialStream }: { initialStream?: string }): JS
     const bookedLocation = locations.find((location) => location.id === locationId);
     const mapQuery = bookedLocation ? `${bookedLocation.name}, ${bookedLocation.address}` : null;
     return (
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        className={`${stepCard} text-center`}
-      >
+      <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className={`${stepCard} text-center`}>
         <p className="font-script text-4xl text-bronze-light">See you soon!</p>
         <p className="mt-4 text-lg">
           Booked for{' '}
-          <span className="font-display text-bronze-light">
-            {formatTimeMalta(result.startsAt)}
-          </span>{' '}
-          on {result.startsAt.slice(0, 10)}
-          {result.comboGroupId ? ' — Combo Wash & Cut' : ''}
+          <span className="font-display text-bronze-light">{formatTimeMalta(result.startsAt)}</span> on{' '}
+          {result.startsAt.slice(0, 10)}
         </p>
+        <div className="mx-auto mt-4 max-w-sm text-left text-sm text-white/60">
+          {chosenServices.map((service) => (
+            <div key={service.id} className="flex justify-between border-b border-white/5 py-1.5">
+              <span>{service.name}</span>
+              <span className="text-white/40">{priceLabel(service)}</span>
+            </div>
+          ))}
+        </div>
         <p className="font-display mt-3 text-4xl text-bronze-light">{formatEuro(result.amountCents)}</p>
         <p className="mx-auto mt-4 max-w-md text-sm text-white/50">
-          Payment reference <span className="font-mono text-white/70">{result.paymentReference}</span>.
-          Your booking is held as pending and confirms the moment Trust Payments settles the charge.
+          Payment reference <span className="font-mono text-white/70">{result.paymentReference}</span>. Your
+          booking is held as pending and confirms the moment Trust Payments settles the charge.
         </p>
         {bookedLocation && mapQuery ? (
           <div className="mx-auto mt-6 max-w-md rounded-xl border border-white/10 bg-graphite-deep/60 p-4">
@@ -326,10 +462,16 @@ export const BookingWizard = ({ initialStream }: { initialStream?: string }): JS
           </div>
         ) : null}
         <div className="mt-8 flex justify-center gap-3">
-          <Link href="/account" className="rounded-lg bg-bronze px-5 py-2.5 font-medium text-graphite-deep transition hover:bg-bronze-light">
+          <Link
+            href="/account"
+            className="rounded-lg bg-bronze px-5 py-2.5 font-medium text-graphite-deep transition hover:bg-bronze-light"
+          >
             My bookings
           </Link>
-          <Link href="/" className="rounded-lg border border-white/15 px-5 py-2.5 text-white/70 transition hover:text-white">
+          <Link
+            href="/"
+            className="rounded-lg border border-white/15 px-5 py-2.5 text-white/70 transition hover:text-white"
+          >
             Home
           </Link>
         </div>
@@ -337,30 +479,44 @@ export const BookingWizard = ({ initialStream }: { initialStream?: string }): JS
     );
   }
 
+  /** Running tally, shown from the haircut card onwards. */
+  const summary = (): JSX.Element | null => {
+    if (chosenServices.length === 0) return null;
+    return (
+      <p className="mt-4 text-xs text-white/45">
+        {chosenServices.map((service) => service.name).join(' + ')} ·{' '}
+        <span className="text-bronze-light">
+          {hasQuoteOnly && totalCents === 0 ? 'On inspection' : formatEuro(totalCents)}
+          {hasQuoteOnly && totalCents > 0 ? ' + quote' : ''}
+        </span>
+      </p>
+    );
+  };
+
   return (
     <div className="flex flex-col gap-6">
       {/* 1 — what */}
       <div className={stepCard}>
         <h2 className="text-2xl">What are you booking?</h2>
-        <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          {STREAMS.map((candidate) => (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          {(
+            [
+              { key: 'CUT', mark: 'The Barber', title: 'A Cut', copy: 'Haircuts, beards and finishing touches.', accent: KIND_COLORS.BARBER },
+              { key: 'WASH', mark: 'The Car Wash', title: 'A Wash', copy: 'Washes, valeting and detailing for your car.', accent: KIND_COLORS.WASH },
+            ] as const
+          ).map((candidate) => (
             <button
               key={candidate.key}
               type="button"
               onClick={() => {
                 setStream(candidate.key);
-                setSlot(null);
-                setSlots(null);
+                resetFromBranch('');
+                setLocationId(null);
               }}
               className={`rounded-xl border p-4 text-left transition ${
                 stream === candidate.key ? 'border-white/40' : 'border-white/10 hover:border-white/25'
               }`}
-              style={{
-                background:
-                  candidate.key === 'COMBO'
-                    ? `linear-gradient(135deg, ${KIND_COLORS.BARBER.soft}, ${KIND_COLORS.WASH.soft})`
-                    : candidate.accent.soft,
-              }}
+              style={{ background: candidate.accent.soft }}
             >
               <span className="font-script block text-xl" style={{ color: candidate.accent.text }}>
                 {candidate.mark}
@@ -372,7 +528,7 @@ export const BookingWizard = ({ initialStream }: { initialStream?: string }): JS
         </div>
       </div>
 
-      {/* 2 — where */}
+      {/* 2 — where, as branch cards behind their shopfront */}
       {stream ? (
         <div className={stepCard}>
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -392,81 +548,249 @@ export const BookingWizard = ({ initialStream }: { initialStream?: string }): JS
               <span className="text-xs text-white/40">Location unavailable — showing all branches</span>
             )}
           </div>
-          <div className="mt-4 flex flex-wrap gap-2">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {branches.map((location) => {
               const dist =
                 coords && location.latitude !== null && location.longitude !== null
                   ? distanceKm(coords, { lat: location.latitude, lng: location.longitude })
                   : null;
+              const active = locationId === location.id;
               return (
                 <button
                   key={location.id}
                   type="button"
-                  onClick={() => setLocationId(location.id)}
-                  className={chip(locationId === location.id)}
+                  onClick={() => resetFromBranch(location.id)}
+                  aria-pressed={active}
+                  className={`group relative flex min-h-[132px] flex-col justify-end overflow-hidden rounded-xl border p-4 text-left transition ${
+                    active ? 'border-bronze' : 'border-white/10 hover:border-white/30'
+                  }`}
+                  style={
+                    location.photoUrl
+                      ? {
+                          backgroundImage: `linear-gradient(to top, rgba(14,14,16,0.92), rgba(14,14,16,0.35)), url(${location.photoUrl})`,
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center',
+                        }
+                      : { background: 'linear-gradient(to top, rgba(14,14,16,0.92), rgba(176,141,87,0.18))' }
+                  }
                 >
-                  {location.name}
-                  {dist !== null ? <span className="ml-1.5 text-white/40">· {dist.toFixed(1)} km</span> : null}
+                  <span className="relative z-10">
+                    <span className="block text-lg font-medium">{location.name}</span>
+                    <span className="mt-0.5 block text-xs text-white/55">{location.address}</span>
+                    <span className="mt-1 block text-xs text-white/40">
+                      {dist !== null ? `${dist.toFixed(1)} km away` : ''}
+                      {dist !== null && location.bayCount > 0 ? ' · ' : ''}
+                      {location.bayCount > 0 ? 'Car wash on site' : ''}
+                    </span>
+                  </span>
                 </button>
               );
             })}
           </div>
-          {needsWashBay && branches.length < locations.length ? (
-            <p className="mt-3 text-xs text-white/40">
-              Showing branches with wash bays.
-            </p>
+          {stream === 'WASH' && branches.length < locations.length ? (
+            <p className="mt-3 text-xs text-white/40">Showing branches with wash bays.</p>
           ) : null}
         </div>
       ) : null}
 
-      {/* 3 — services */}
-      {stream && locationId ? (
+      {/* 3 — who (barber comes before the services) */}
+      {stream === 'CUT' && locationId ? (
         <div className={stepCard}>
-          <h2 className="text-2xl">
-            {stream === 'COMBO' ? 'Pick your cut and your wash' : 'Pick a service'}
-          </h2>
-          {stream !== 'WASH' ? (
-            <div className="mt-4">
-              {stream === 'COMBO' ? (
-                <p className="font-script mb-2 text-lg text-bronze-light">The Barber</p>
-              ) : null}
-              <div className="flex flex-wrap gap-2">
-                {barberServices.map((service) => (
-                  <button
-                    key={service.id}
-                    type="button"
-                    onClick={() => setBarberServiceId(service.id)}
-                    className={chip(barberServiceId === service.id)}
-                  >
-                    {service.name} · {formatEuro(service.priceCents)}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
-          {stream !== 'CUT' ? (
-            <div className="mt-4">
-              {stream === 'COMBO' ? (
-                <p className="font-script mb-2 text-lg text-wash-light">The Car Wash</p>
-              ) : null}
-              <div className="flex flex-wrap gap-2">
-                {washServices.map((service) => (
-                  <button
-                    key={service.id}
-                    type="button"
-                    onClick={() => setWashServiceId(service.id)}
-                    className={chip(washServiceId === service.id)}
-                  >
-                    {service.name} · {formatEuro(service.priceCents)}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
+          <h2 className="text-2xl">Who&rsquo;s cutting?</h2>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setBarberId(null);
+                setBarberChosen(true);
+              }}
+              className={chip(barberChosen && barberId === null)}
+            >
+              Any barber
+            </button>
+            {barbers.map((barber) => {
+              const rating = ratings[barber.id];
+              return (
+                <button
+                  key={barber.id}
+                  type="button"
+                  onClick={() => {
+                    setBarberId(barber.id);
+                    setBarberChosen(true);
+                  }}
+                  className={chip(barberId === barber.id)}
+                >
+                  {barber.firstName} {barber.lastName}
+                  {rating?.average !== null && rating?.average !== undefined ? (
+                    <span className="ml-1.5 text-white/40">
+                      ★ {rating.average} ({rating.count})
+                    </span>
+                  ) : null}
+                  {barber.stationNo !== null ? (
+                    <span className="ml-1.5 text-white/30">#{barber.stationNo}</span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
         </div>
       ) : null}
 
-      {/* 4 — when */}
+      {/* 4 — haircut */}
+      {stream === 'CUT' && locationId && barberChosen ? (
+        <div className={stepCard}>
+          <h2 className="text-2xl">Haircuts</h2>
+          <p className="mt-1 text-sm text-white/45">Combos first — pick the cut you&rsquo;re after.</p>
+          <div className="mt-4 flex flex-col gap-2">
+            {haircuts.map((service) => (
+              <ServiceRow
+                key={service.id}
+                service={service}
+                selected={haircutId === service.id}
+                onSelect={() => {
+                  setHaircutId(service.id);
+                  setSlot(null);
+                }}
+              />
+            ))}
+          </div>
+          {summary()}
+        </div>
+      ) : null}
+
+      {/* 5 — beard */}
+      {readyForBeard ? (
+        <div className={stepCard}>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-2xl">Beards</h2>
+            <button
+              type="button"
+              onClick={() => {
+                setBeardId(null);
+                setBeardSkipped(true);
+                setSlot(null);
+              }}
+              className={chip(beardSkipped && beardId === null)}
+            >
+              Skip
+            </button>
+          </div>
+          <div className="mt-4 flex flex-col gap-2">
+            {beards.map((service) => (
+              <ServiceRow
+                key={service.id}
+                service={service}
+                selected={beardId === service.id}
+                onSelect={() => {
+                  setBeardId(service.id);
+                  setBeardSkipped(false);
+                  setSlot(null);
+                }}
+              />
+            ))}
+          </div>
+          {summary()}
+        </div>
+      ) : null}
+
+      {/* 6 — add-ons (several allowed) */}
+      {readyForAddons ? (
+        <div className={stepCard}>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-2xl">Add-ons</h2>
+            <button
+              type="button"
+              onClick={() => {
+                setAddonsDone(true);
+                setSlot(null);
+              }}
+              className={chip(addonsDone)}
+            >
+              {addonIds.length > 0 ? 'Done' : 'Skip'}
+            </button>
+          </div>
+          <p className="mt-1 text-sm text-white/45">Pick as many as you like.</p>
+          <div className="mt-4 flex flex-col gap-2">
+            {addons.map((service) => (
+              <ServiceRow
+                key={service.id}
+                service={service}
+                selected={addonIds.includes(service.id)}
+                onSelect={() => {
+                  setAddonIds((prev) =>
+                    prev.includes(service.id)
+                      ? prev.filter((id) => id !== service.id)
+                      : [...prev, service.id],
+                  );
+                  setSlot(null);
+                }}
+              />
+            ))}
+          </div>
+          {summary()}
+        </div>
+      ) : null}
+
+      {/* 7 — car wash, only where there are bays */}
+      {readyForWash ? (
+        <div className={stepCard}>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-2xl">Car wash</h2>
+            <button
+              type="button"
+              onClick={() => {
+                setWashServiceId(null);
+                setWashDone(true);
+                setSlot(null);
+              }}
+              className={chip(washDone && washServiceId === null)}
+            >
+              Skip
+            </button>
+          </div>
+          <p className="mt-1 text-sm text-white/45">
+            {branch?.name} only — your car is washed while you&rsquo;re in the chair.
+          </p>
+          <div className="mt-4 flex flex-col gap-2">
+            {washes.map((service) => (
+              <ServiceRow
+                key={service.id}
+                service={service}
+                selected={washServiceId === service.id}
+                onSelect={() => {
+                  setWashServiceId(service.id);
+                  setWashDone(true);
+                  setSlot(null);
+                }}
+              />
+            ))}
+          </div>
+          {summary()}
+        </div>
+      ) : null}
+
+      {/* wash-only journey keeps its single service list */}
+      {stream === 'WASH' && locationId ? (
+        <div className={stepCard}>
+          <h2 className="text-2xl">Pick a service</h2>
+          <div className="mt-4 flex flex-col gap-2">
+            {washes.map((service) => (
+              <ServiceRow
+                key={service.id}
+                service={service}
+                selected={washServiceId === service.id}
+                onSelect={() => {
+                  setWashServiceId(service.id);
+                  setSlot(null);
+                }}
+              />
+            ))}
+          </div>
+          {summary()}
+        </div>
+      ) : null}
+
+      {/* 8 — when */}
       {stream && locationId && servicesChosen ? (
         <div className={stepCard}>
           <h2 className="text-2xl">When?</h2>
@@ -486,39 +810,36 @@ export const BookingWizard = ({ initialStream }: { initialStream?: string }): JS
             {slotsLoading ? (
               <p className="text-sm text-white/50">Finding free slots…</p>
             ) : slots && slots.length === 0 ? (
-              <p className="text-sm text-white/50">
-                Nothing free that day — try another date or branch.
-              </p>
+              <p className="text-sm text-white/50">Nothing free that day — try another date or branch.</p>
             ) : slots ? (
               <div className="flex flex-wrap gap-2">
-                {slots.map((candidate) => (
-                  <button
-                    key={candidate.startsAt}
-                    type="button"
-                    onClick={() => setSlot(candidate)}
-                    className={`rounded-lg px-3 py-2 text-sm transition ${
-                      slot?.startsAt === candidate.startsAt
-                        ? 'text-graphite-deep'
-                        : 'text-white/80 hover:text-white'
-                    }`}
-                    style={{
-                      background:
-                        slot?.startsAt === candidate.startsAt
-                          ? (spec?.accent.solid ?? '#b08d57')
-                          : (spec?.accent.soft ?? 'rgba(255,255,255,0.06)'),
-                      boxShadow: `inset 0 0 0 1px ${spec?.accent.solid ?? '#b08d57'}33`,
-                    }}
-                  >
-                    {candidate.label}
-                  </button>
-                ))}
+                {slots.map((candidate) => {
+                  const accent = stream === 'WASH' ? KIND_COLORS.WASH : KIND_COLORS.BARBER;
+                  const picked = slot?.startsAt === candidate.startsAt;
+                  return (
+                    <button
+                      key={`${candidate.startsAt}-${candidate.barberId ?? candidate.washBayId ?? ''}`}
+                      type="button"
+                      onClick={() => setSlot(candidate)}
+                      className={`rounded-lg px-3 py-2 text-sm transition ${
+                        picked ? 'text-graphite-deep' : 'text-white/80 hover:text-white'
+                      }`}
+                      style={{
+                        background: picked ? accent.solid : accent.soft,
+                        boxShadow: `inset 0 0 0 1px ${accent.solid}33`,
+                      }}
+                    >
+                      {candidate.label}
+                    </button>
+                  );
+                })}
               </div>
             ) : null}
           </div>
         </div>
       ) : null}
 
-      {/* 5 — confirm */}
+      {/* 9 — confirm */}
       <AnimatePresence>
         {stream && locationId && servicesChosen && slot ? (
           <motion.div
@@ -528,12 +849,22 @@ export const BookingWizard = ({ initialStream }: { initialStream?: string }): JS
             className={stepCard}
           >
             <h2 className="text-2xl">Confirm</h2>
+            <div className="mt-4 flex flex-col gap-1.5 text-sm">
+              {chosenServices.map((service) => (
+                <div key={service.id} className="flex justify-between border-b border-white/5 pb-1.5">
+                  <span className="text-white/70">{service.name}</span>
+                  <span className="text-white/50">{priceLabel(service)}</span>
+                </div>
+              ))}
+            </div>
             <p className="mt-3 text-white/70">
-              {formatTimeMalta(slot.startsAt)} on {date} ·{' '}
-              {locations.find((location) => location.id === locationId)?.name}
+              {formatTimeMalta(slot.startsAt)} on {date} · {branch?.name}
               {slot.barberName ? ` · with ${slot.barberName}` : ''}
             </p>
-            <p className="font-display mt-2 text-4xl text-bronze-light">{formatEuro(totalCents)}</p>
+            <p className="font-display mt-2 text-4xl text-bronze-light">
+              {hasQuoteOnly && totalCents === 0 ? 'On inspection' : formatEuro(totalCents)}
+              {hasQuoteOnly && totalCents > 0 ? ' + quote' : ''}
+            </p>
             {needsWashBay ? (
               <input
                 aria-label="Vehicle registration"
@@ -548,9 +879,7 @@ export const BookingWizard = ({ initialStream }: { initialStream?: string }): JS
 
             {phase === 'auth' ? (
               <div className="mt-6 max-w-sm rounded-xl border border-white/10 bg-graphite-deep/60 p-5">
-                <p className="mb-4 text-sm text-white/60">
-                  Sign in or create an account to lock in your slot.
-                </p>
+                <p className="mb-4 text-sm text-white/60">Sign in or create an account to lock in your slot.</p>
                 <AuthForm onSuccess={() => void submitBooking()} />
               </div>
             ) : (
