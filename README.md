@@ -9,6 +9,7 @@ Unified platform for 5 Maltese branches combining premium barbering with high-en
 | `apps/api` | `@ta-spiru/api` | NestJS backend — RBAC, bookings, virtual queue, inventory, timeclock, loyalty, Trust Payments |
 | `apps/web` | `@ta-spiru/web` | Next.js storefront, `/admin` Master Portal, `/display/[branch]` TV queue boards |
 | `apps/mobile` | `@ta-spiru/mobile` | Expo / React Native customer app |
+| `apps/jarvis` | `@ta-spiru/jarvis` | Jarvis — Jake's installable voice-assistant PWA (unrelated to the Ta' Spiru product; see `apps/jarvis/README.md`) |
 | `packages/database` | `@ta-spiru/database` | Prisma schema, client, migrations, seed |
 | `packages/shared` | `@ta-spiru/shared` | Cross-app constants and transport types |
 

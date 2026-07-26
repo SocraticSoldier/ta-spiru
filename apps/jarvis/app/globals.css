@@ -1,0 +1,12 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body {
+  background: #0A0A0C;
+  color: #ECECF1;
+}
+
+body {
+  overscroll-behavior: none;
+}
