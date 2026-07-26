@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  background: #0b0b14;
+  color: #fff6f1;
+}
+
+/* The dusk gradient from the key art, reusable as a section background. */
+.dusk {
+  background: linear-gradient(180deg, #ed9774 0%, #ffa489 28%, #feb8ab 58%, #fecdc6 100%);
+}

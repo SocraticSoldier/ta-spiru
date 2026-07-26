@@ -10,6 +10,8 @@ Unified platform for 5 Maltese branches combining premium barbering with high-en
 | `apps/web` | `@ta-spiru/web` | Next.js storefront, `/admin` Master Portal, `/display/[branch]` TV queue boards |
 | `apps/mobile` | `@ta-spiru/mobile` | Expo / React Native customer app |
 | `apps/jarvis` | `@ta-spiru/jarvis` | Jarvis — Jake's installable voice-assistant PWA (unrelated to the Ta' Spiru product; see `apps/jarvis/README.md`) |
+| `apps/ananke` | `@ta-spiru/ananke` | ΑΝΑΠΟΦΕΥΚΤΟΣ — the "Inevitable" Greek content brand site and post studio |
+| `docs/BRAND-BRIEF.md` | — | Brand brief for every project in the Gemini Ltd pipeline |
 | `packages/database` | `@ta-spiru/database` | Prisma schema, client, migrations, seed |
 | `packages/shared` | `@ta-spiru/shared` | Cross-app constants and transport types |
 

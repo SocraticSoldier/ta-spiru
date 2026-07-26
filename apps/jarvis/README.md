@@ -9,7 +9,9 @@ Three screens, sharing one brain and one event log:
 | Screen | What it is |
 | --- | --- |
 | `/` — **Assistant** | The voice loop: **mic → wake word → speech-to-text → Claude → text-to-speech** |
+| `/dashboard` — **Daily** | Motivation, practical tips, your sign, and today's training session |
 | `/malti` — **Malti** | Context-aware Maltese dictionary: root, origin, plurals/conjugation, real usage |
+| `/vault` — **Vault** | Password-gated private section |
 | `/debug` — **Debug** | Live trace of the microphone, wake word and API calls |
 
 Everything else on the Jarvis roadmap (Drive, Calendar, WhatsApp, Spotify, the driver module, …) is a connector to bolt on later — see `docs/JARVIS-PHASE-0.md` in the planning package for the full backlog.
@@ -103,6 +105,19 @@ The loop is driven by Web Speech callbacks that outlive the render which created
 | Var | Required | Notes |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Yes | Jarvis's brain. Get one at console.anthropic.com. Never commit it — `.env` is gitignored. |
+| `JARVIS_VAULT_PASSWORD` | No | Unlocks `/vault`. Unset means the vault stays **closed**, not open. |
+
+### What the vault gate actually does
+
+The password is verified on the server with a constant-time comparison and is never sent to the
+browser. Unlocking mints a 12-hour token signed with that password and stores it in an httpOnly
+cookie, which JavaScript cannot read. `/vault` is `force-dynamic` and renders the private component
+only after verifying that token, so the content is never in the HTML or the JS bundle for someone who
+merely knows the URL. Repeated wrong guesses are rate-limited.
+
+What it does **not** do is encrypt what the browser stores after unlocking. Notes live in
+`localStorage` in the clear, so anyone who can unlock the device and open developer tools can read
+them. It is a lock on the door, not a safe.
 
 ## Next slice
 

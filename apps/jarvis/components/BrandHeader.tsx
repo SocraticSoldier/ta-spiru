@@ -1,10 +1,12 @@
 import Link from 'next/link';
 
-type Section = 'assistant' | 'malti' | 'debug';
+type Section = 'assistant' | 'dashboard' | 'malti' | 'debug' | 'vault';
 
 const LINKS: { href: string; label: string; key: Section }[] = [
   { href: '/', label: 'Assistant', key: 'assistant' },
+  { href: '/dashboard', label: 'Daily', key: 'dashboard' },
   { href: '/malti', label: 'Malti', key: 'malti' },
+  { href: '/vault', label: 'Vault', key: 'vault' },
   { href: '/debug', label: 'Debug', key: 'debug' },
 ];
 
@@ -26,7 +28,7 @@ export default function BrandHeader({ active }: { active: Section }) {
         </div>
       </div>
 
-      <nav className="flex gap-2">
+      <nav className="flex flex-wrap justify-center gap-2">
         {LINKS.map((link) => (
           <Link
             key={link.key}
