@@ -4,11 +4,33 @@ Jake's voice-driven AI assistant. A installable web app (PWA) — no app store, 
 
 ## What it actually does today
 
-This is Phase 0: one page, one voice loop, one brain. It proves the pipeline end to end:
+Three screens, sharing one brain and one event log:
 
-**mic → wake word → speech-to-text → Claude → text-to-speech**
+| Screen | What it is |
+| --- | --- |
+| `/` — **Assistant** | The voice loop: **mic → wake word → speech-to-text → Claude → text-to-speech** |
+| `/malti` — **Malti** | Context-aware Maltese dictionary: root, origin, plurals/conjugation, real usage |
+| `/debug` — **Debug** | Live trace of the microphone, wake word and API calls |
 
 Everything else on the Jarvis roadmap (Drive, Calendar, WhatsApp, Spotify, the driver module, …) is a connector to bolt on later — see `docs/JARVIS-PHASE-0.md` in the planning package for the full backlog.
+
+### Malti — the dictionary
+
+The point is to be worth more than Google Translate, so an entry carries what a translator drops:
+
+- **Origin and root.** Maltese is Semitic (from Siculo-Arabic) written in Latin script, so words of Semitic origin sit on a consonantal root — `ktieb` (book) shares `k-t-b` with `kiteb` (he wrote) and `kittieb` (writer). Roughly half the vocabulary is instead Sicilian/Italian or English, and those have no root; the entry says which you are looking at.
+- **Real inflection.** Broken plurals (`ktieb → kotba`, `tifel → tfal`) rather than a suffix rule, and the perfect conjugation across all persons for verbs.
+- **Usage, not just meaning.** Register, frequency, and the traps — including how the article `il-` assimilates before sun letters (`ix-xemx`, `id-dar`, `it-tfal`).
+
+Entries come back through structured outputs, so the shape is guaranteed rather than parsed hopefully. A word it does not know is reported as unknown instead of being invented.
+
+Note that browsers ship **no Maltese voice or acoustic model**, so "Hear" and "Speak" fall back to your device's default language and only approximate the pronunciation. Typing is the reliable path.
+
+### Debug — why it exists
+
+A phone has no devtools, and this app's failure modes are silent: a speech recognition that stops re-arming is indistinguishable from nobody talking, and a denied microphone looks like a quiet room. `/debug` records every microphone request, wake-word match, API call with its latency, and speech-synthesis handoff, plus what the device itself supports (secure context, wake-word capability, whether it is running installed or in a tab). "Copy" lifts the whole log out as text.
+
+The log is in memory only. It is never sent anywhere and clears when the app closes.
 
 ## The one real platform limit
 
@@ -48,19 +70,33 @@ The first time you tap the circle (or press-to-talk), the browser will prompt fo
 ```
 apps/jarvis/
 ├── app/
-│   ├── page.tsx          the one screen
-│   ├── layout.tsx        PWA meta, manifest link, fonts
+│   ├── page.tsx             the assistant screen
+│   ├── malti/page.tsx       the dictionary
+│   ├── debug/page.tsx       the debug console
+│   ├── layout.tsx           PWA meta, manifest link, fonts
 │   ├── globals.css
-│   └── api/chat/route.ts server route → Anthropic API (the "brain")
+│   └── api/
+│       ├── chat/route.ts    server route → Claude (the "brain")
+│       └── malti/route.ts   dictionary lookup, structured output
 ├── components/
-│   └── JarvisVoice.tsx   wake-word detection, press-to-talk, TTS, text fallback
-├── lib/speech.d.ts       Web Speech API type declarations (not in default TS lib)
+│   ├── JarvisVoice.tsx      wake word, press-to-talk, TTS, text fallback
+│   ├── MaltiDictionary.tsx  lookup UI and entry rendering
+│   ├── DebugConsole.tsx     live event log + device capabilities
+│   └── BrandHeader.tsx      shared header and section nav
+├── lib/
+│   ├── speech.ts            shared Web Speech helpers
+│   └── jarvisLog.ts         in-memory event log the debug console subscribes to
+├── types/web-speech.d.ts    Web Speech API declarations (absent from TS's default lib)
 ├── public/
-│   ├── manifest.json     PWA manifest (installable, standalone display)
-│   ├── sw.js             minimal offline-shell service worker
-│   └── icons/            app icons (192/512/maskable/apple-touch)
+│   ├── manifest.json        PWA manifest (installable, standalone display)
+│   ├── sw.js                minimal offline-shell service worker
+│   └── icons/               app icons (192/512/maskable/apple-touch)
 └── .env.example
 ```
+
+### A note for whoever touches the voice loop next
+
+The loop is driven by Web Speech callbacks that outlive the render which created them, which makes stale closures the dominant hazard here. Conversation state therefore lives in a **ref**, and the callbacks are kept stable — capturing state from a render freezes it there, and every later spoken turn silently sends the frozen value. Likewise, always `detachAndAbort` a recognition rather than calling `abort()` directly: `abort()` fires `onend` asynchronously, and a live handler will restart the instance you were replacing, leaving two competing for the microphone.
 
 ## Env vars
 

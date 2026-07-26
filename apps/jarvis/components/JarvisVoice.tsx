@@ -1,6 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  detachAndAbort,
+  getSpeechRecognitionCtor,
+  requestMicrophone,
+  speak as speakText,
+} from '@/lib/speech';
+import { log } from '@/lib/jarvisLog';
 
 type Status =
   | 'idle'
@@ -31,31 +38,6 @@ const STATUS_LABEL: Record<Status, string> = {
   unsupported: 'Voice input not supported in this browser',
   error: 'Something went wrong',
 };
-
-function getSpeechRecognitionCtor(): { new (): SpeechRecognition } | null {
-  if (typeof window === 'undefined') return null;
-  return window.SpeechRecognition ?? window.webkitSpeechRecognition ?? null;
-}
-
-/**
- * Detach handlers before aborting. abort() fires `onend` asynchronously, so a
- * still-attached handler would restart the very recognition we are replacing
- * and leave two instances competing for the microphone.
- */
-function detachAndAbort(ref: { current: SpeechRecognition | null }) {
-  const recognition = ref.current;
-  if (!recognition) return;
-  recognition.onresult = null;
-  recognition.onend = null;
-  recognition.onerror = null;
-  recognition.onstart = null;
-  try {
-    recognition.abort();
-  } catch {
-    // Aborting a recognition that never started throws in some browsers.
-  }
-  ref.current = null;
-}
 
 export default function JarvisVoice() {
   const [status, setStatus] = useState<Status>('idle');
@@ -88,7 +70,16 @@ export default function JarvisVoice() {
   }, []);
 
   useEffect(() => {
-    setSpeechSupported(getSpeechRecognitionCtor() !== null);
+    const supported = getSpeechRecognitionCtor() !== null;
+    setSpeechSupported(supported);
+    log(
+      supported ? 'info' : 'warn',
+      'voice',
+      supported
+        ? 'SpeechRecognition available — wake word supported'
+        : 'No SpeechRecognition in this browser — press-to-talk and text only',
+      typeof navigator === 'undefined' ? undefined : navigator.userAgent,
+    );
   }, []);
 
   useEffect(() => {
@@ -101,25 +92,11 @@ export default function JarvisVoice() {
   }, []);
 
   const speak = useCallback(
-    (text: string) =>
-      new Promise<void>((resolve) => {
-        if (typeof window === 'undefined' || !window.speechSynthesis) {
-          resolve();
-          return;
-        }
-        // Never reject: a speech-synthesis failure must not tear down the
-        // voice loop, or the wake word would stop rearming for good.
-        try {
-          const utterance = new SpeechSynthesisUtterance(text);
-          utterance.onend = () => resolve();
-          utterance.onerror = () => resolve();
-          updateStatus('speaking');
-          window.speechSynthesis.cancel();
-          window.speechSynthesis.speak(utterance);
-        } catch {
-          resolve();
-        }
-      }),
+    async (text: string) => {
+      updateStatus('speaking');
+      log('info', 'tts', 'Speaking reply', `${text.length} chars`);
+      await speakText(text);
+    },
     [updateStatus],
   );
 
@@ -138,6 +115,9 @@ export default function JarvisVoice() {
       ];
       historyRef.current = outgoing.slice(-MAX_HISTORY);
 
+      log('info', 'api', 'POST /api/chat', `"${trimmed}" · ${outgoing.length} msg history`);
+      const startedAt = Date.now();
+
       let replyText: string;
       try {
         const res = await fetch('/api/chat', {
@@ -146,14 +126,23 @@ export default function JarvisVoice() {
           body: JSON.stringify({ message: trimmed, history: outgoing }),
         });
         const data = await res.json();
+        const elapsed = Date.now() - startedAt;
+
+        if (data.reply) {
+          log('success', 'api', `Reply in ${elapsed}ms`, data.reply);
+        } else {
+          log('error', 'api', `HTTP ${res.status} in ${elapsed}ms`, data.error ?? 'no reply field');
+        }
+
         replyText = data.reply ?? data.error ?? "I couldn't reach the brain just now.";
         const assistantTurn: ChatMessage = { role: 'assistant', content: replyText };
         historyRef.current = [...historyRef.current, assistantTurn].slice(-MAX_HISTORY);
-      } catch {
+      } catch (error) {
         // Network failure: drop the user turn so a dead request doesn't
         // poison the next prompt with a question that was never answered.
         historyRef.current = historyRef.current.slice(0, -1);
         replyText = 'I lost connection reaching the server. Try again in a moment.';
+        log('error', 'api', 'Request failed', error instanceof Error ? error.message : String(error));
       }
 
       setReply(replyText);
@@ -182,6 +171,7 @@ export default function JarvisVoice() {
     commandRecognitionRef.current = recognition;
     updateStatus('active-listening');
     setTranscript('');
+    log('info', 'voice', 'Listening for your question');
 
     let finalTranscript = '';
     let settled = false;
@@ -193,10 +183,10 @@ export default function JarvisVoice() {
       commandRecognitionRef.current = null;
       if (finalTranscript.trim()) {
         void sendToJarvis(finalTranscript);
-      } else if (shouldListenRef.current) {
-        startWakeListeningRef.current();
       } else {
-        updateStatus('idle');
+        log('warn', 'voice', 'Heard nothing usable, re-arming wake word');
+        if (shouldListenRef.current) startWakeListeningRef.current();
+        else updateStatus('idle');
       }
     };
 
@@ -211,7 +201,10 @@ export default function JarvisVoice() {
       }
       setTranscript(finalTranscript || interim);
     };
-    recognition.onerror = finish;
+    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+      log('warn', 'voice', `Recognition error: ${event.error}`);
+      finish();
+    };
     recognition.onend = finish;
     recognition.start();
   }, [sendToJarvis, updateStatus]);
@@ -233,6 +226,7 @@ export default function JarvisVoice() {
     // The last exchange deliberately stays on screen while we wait for the
     // next wake word — clearing it here would erase the answer before it
     // could be read. sendToJarvis clears it when a new question starts.
+    log('info', 'voice', 'Armed — listening for "Hey Jarvis"');
 
     // Chrome ends a continuous recognition every ~60s of quiet; restarting on
     // `end` is what keeps the wake word live indefinitely.
@@ -241,6 +235,7 @@ export default function JarvisVoice() {
       try {
         recognition.start();
       } catch {
+        log('warn', 'voice', 'Restart threw, rebuilding recognition');
         setTimeout(() => {
           if (shouldListenRef.current) startWakeListeningRef.current();
         }, 300);
@@ -253,6 +248,7 @@ export default function JarvisVoice() {
         if (!WAKE_PATTERN.test(text)) continue;
 
         const afterWake = text.replace(WAKE_PATTERN, '').trim();
+        log('success', 'voice', 'Wake word detected', text);
         detachAndAbort(wakeRecognitionRef);
         // "Hey Jarvis, what's my schedule" in one breath skips the second pass.
         if (afterWake.length > 3) void sendToJarvis(afterWake);
@@ -263,9 +259,11 @@ export default function JarvisVoice() {
     recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
       if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
         shouldListenRef.current = false;
+        log('error', 'voice', 'Microphone permission denied by the browser');
         updateStatus('permission-denied');
         return;
       }
+      log('warn', 'voice', `Wake recognition error: ${event.error}`);
       restartIfStillWanted();
     };
     recognition.onend = restartIfStillWanted;
@@ -276,39 +274,39 @@ export default function JarvisVoice() {
     startWakeListeningRef.current = startWakeListening;
   }, [startWakeListening]);
 
-  const requestMic = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((track) => track.stop());
-      return true;
-    } catch {
-      updateStatus('permission-denied');
-      return false;
-    }
-  }, [updateStatus]);
-
   const activate = useCallback(async () => {
     updateStatus('requesting-permission');
-    if (!(await requestMic())) return;
+    log('info', 'mic', 'Requesting microphone access');
+    if (!(await requestMicrophone())) {
+      log('error', 'mic', 'Microphone access denied');
+      updateStatus('permission-denied');
+      return;
+    }
+    log('success', 'mic', 'Microphone granted');
     shouldListenRef.current = true;
     if (getSpeechRecognitionCtor()) startWakeListening();
     else updateStatus('unsupported');
-  }, [requestMic, startWakeListening, updateStatus]);
+  }, [startWakeListening, updateStatus]);
 
   const deactivate = useCallback(() => {
     shouldListenRef.current = false;
     detachAndAbort(wakeRecognitionRef);
     detachAndAbort(commandRecognitionRef);
     window.speechSynthesis?.cancel();
+    log('info', 'voice', 'Stopped by user');
     updateStatus('idle');
   }, [updateStatus]);
 
   const pressToTalk = useCallback(async () => {
     if (status !== 'wake-listening' && status !== 'idle') return;
-    if (!(await requestMic())) return;
+    if (!(await requestMicrophone())) {
+      log('error', 'mic', 'Microphone access denied');
+      updateStatus('permission-denied');
+      return;
+    }
     shouldListenRef.current = true;
     startCommandListening();
-  }, [status, requestMic, startCommandListening]);
+  }, [status, startCommandListening, updateStatus]);
 
   const submitText = useCallback(
     (event: React.FormEvent) => {
