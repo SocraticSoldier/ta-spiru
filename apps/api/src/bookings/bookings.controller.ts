@@ -7,9 +7,10 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { AuthenticatedUser } from '../auth/interfaces/auth.interfaces';
-import { BookingsService, ComboBookingResult } from './bookings.service';
+import { BookingsService, ComboBookingResult, VisitBookingResult } from './bookings.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { CreateComboBookingDto } from './dto/create-combo-booking.dto';
+import { CreateVisitDto } from './dto/create-visit.dto';
 import { DayScheduleQueryDto, FindAvailabilityDto } from './dto/find-availability.dto';
 import { FindComboAvailabilityDto } from './dto/find-combo-availability.dto';
 
@@ -41,6 +42,16 @@ export class BookingsController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<AppointmentRow> {
     return this.bookingsService.createBooking(dto, user.id, user.role);
+  }
+
+  /** Haircut + beard + add-ons booked back-to-back with one barber. */
+  @Post('visit')
+  @UseGuards(JwtAuthGuard)
+  createVisit(
+    @Body() dto: CreateVisitDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<VisitBookingResult> {
+    return this.bookingsService.createVisit(dto, user.id, user.role);
   }
 
   /** Kiosk/reception: set the client status (being served, no-show, late, …). */

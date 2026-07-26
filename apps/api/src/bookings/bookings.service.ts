@@ -31,6 +31,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { fullName } from '../common/name.util';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { CreateComboBookingDto } from './dto/create-combo-booking.dto';
+import { CreateVisitDto } from './dto/create-visit.dto';
 import { DayScheduleQueryDto, FindAvailabilityDto } from './dto/find-availability.dto';
 import { FindComboAvailabilityDto } from './dto/find-combo-availability.dto';
 import { addMinutes, overlaps, zonedTimeToUtc } from './utils/time.util';
@@ -52,9 +53,54 @@ export interface ComboBookingResult {
   washBayLockedUntil: string;
 }
 
+export interface VisitBookingResult {
+  visitGroupId: string;
+  appointmentIds: string[];
+  startsAt: string;
+  endsAt: string;
+  totalCents: number;
+}
+
+/** Postgres serialization failure / deadlock, surfaced by Prisma. */
+const isWriteConflict = (error: unknown): boolean =>
+  error instanceof Prisma.PrismaClientKnownRequestError &&
+  (error.code === 'P2034' || error.code === 'P2037');
+
+const SERIALIZABLE_ATTEMPTS = 3;
+
 @Injectable()
 export class BookingsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Runs a booking transaction at SERIALIZABLE and retries the handful of times
+   * Postgres needs when two people book overlapping slots at once.
+   *
+   * Without this a write conflict escapes as a 500, which tells the customer
+   * something is broken when the truth is simply "try again" — and on the last
+   * attempt it is a genuine clash, so it deserves the same 409 as any other
+   * taken slot.
+   */
+  private async bookSerializable<T>(
+    work: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await this.prisma.$transaction(work, {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        });
+      } catch (error) {
+        if (!isWriteConflict(error)) {
+          throw error;
+        }
+        if (attempt >= SERIALIZABLE_ATTEMPTS) {
+          throw new ConflictException('That slot was just taken — please pick another time.');
+        }
+        // Brief, growing pause so the retry does not collide with the same writer.
+        await new Promise((resolve) => setTimeout(resolve, 25 * attempt));
+      }
+    }
+  }
 
   /**
    * Resolve the price, duration and daily cap for a barber service as offered by
@@ -314,7 +360,7 @@ export class BookingsService {
       }
 
       const comboGroupId = randomUUID();
-      const [barberAppointment, washAppointment] = await this.prisma.$transaction(
+      const [barberAppointment, washAppointment] = await this.bookSerializable(
         async (tx) => {
           const blockConflict = await tx.timeBlock.findFirst({
             where: {
@@ -387,7 +433,6 @@ export class BookingsService {
           });
           return [createdBarberAppointment, createdWashAppointment] as const;
         },
-        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
       );
 
       return {
@@ -406,6 +451,60 @@ export class BookingsService {
   }
 
   /** Independent (non-combo) availability for a single barber or wash service. */
+  /** Ids of the extra services chained onto the first one, in order, de-duped. */
+  private parseExtraServiceIds(raw: string | undefined, firstServiceId: string): string[] {
+    if (!raw) return [];
+    const seen = new Set<string>([firstServiceId]);
+    const ids: string[] = [];
+    for (const id of raw.split(',')) {
+      const trimmed = id.trim();
+      if (trimmed && !seen.has(trimmed)) {
+        seen.add(trimmed);
+        ids.push(trimmed);
+      }
+    }
+    return ids;
+  }
+
+  /**
+   * Total minutes a visit occupies. When the customer has picked a barber we
+   * use that barber's own tier/override durations; for "any barber" we fall
+   * back to the menu's default durations.
+   */
+  private async resolveVisitDuration(
+    first: { id: string; kind: ServiceKind; durationMin: number; priceCents: number },
+    query: FindAvailabilityDto,
+  ): Promise<number> {
+    const extraIds = this.parseExtraServiceIds(query.extraServiceIds, query.serviceId);
+    if (extraIds.length === 0 && !query.barberId) {
+      return first.durationMin;
+    }
+    if (first.kind !== ServiceKind.BARBER) {
+      // Wash services are booked one at a time against a bay.
+      return first.durationMin;
+    }
+
+    const extras = extraIds.length
+      ? await this.prisma.service.findMany({
+          where: { id: { in: extraIds }, isActive: true, kind: ServiceKind.BARBER },
+        })
+      : [];
+    if (extras.length !== extraIds.length) {
+      throw new BadRequestException('One or more added services were not found or are inactive');
+    }
+
+    const all = [first, ...extras];
+    if (!query.barberId) {
+      return all.reduce((sum, service) => sum + service.durationMin, 0);
+    }
+    let total = 0;
+    for (const service of all) {
+      const resolved = await this.resolveBarberPricing(service, query.barberId);
+      total += resolved.durationMin;
+    }
+    return total;
+  }
+
   async findAvailability(query: FindAvailabilityDto): Promise<AvailabilitySlot[]> {
     try {
       const window = await this.getOpenWindow(query.locationId, query.date);
@@ -421,10 +520,20 @@ export class BookingsService {
         throw new BadRequestException(`Service ${query.serviceId} not found or inactive`);
       }
 
+      // A visit can chain several barber services back-to-back (haircut, then a
+      // beard service, then add-ons). Slots must fit the whole run.
+      const visitDurationMin = await this.resolveVisitDuration(service, query);
+
       const [barbers, resources, appointments, blocks] = await Promise.all([
         service.kind === ServiceKind.BARBER
           ? this.prisma.user.findMany({
-              where: { role: Role.BARBER, locationId: query.locationId, isActive: true, acceptsBookings: true },
+              where: {
+                role: Role.BARBER,
+                locationId: query.locationId,
+                isActive: true,
+                acceptsBookings: true,
+                ...(query.barberId ? { id: query.barberId } : {}),
+              },
               select: {
                 id: true,
                 firstName: true,
@@ -461,10 +570,10 @@ export class BookingsService {
 
       for (
         let cursor = open;
-        addMinutes(cursor, service.durationMin) <= close;
+        addMinutes(cursor, visitDurationMin) <= close;
         cursor = addMinutes(cursor, SLOT_STEP_MIN)
       ) {
-        const slotEnd = addMinutes(cursor, service.durationMin);
+        const slotEnd = addMinutes(cursor, visitDurationMin);
 
         if (
           blocks.some(
@@ -594,7 +703,7 @@ export class BookingsService {
       }
       const endsAt = addMinutes(startsAt, durationMin);
 
-      const appointment = await this.prisma.$transaction(
+      const appointment = await this.bookSerializable(
         async (tx) => {
           const blockConflict = await tx.timeBlock.findFirst({
             where: {
@@ -665,7 +774,6 @@ export class BookingsService {
             },
           });
         },
-        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
       );
 
       return {
@@ -687,6 +795,173 @@ export class BookingsService {
         throw error;
       }
       throw new InternalServerErrorException('Failed to create booking');
+    }
+  }
+
+  /**
+   * Books a run of barber services back-to-back with one barber as a single
+   * visit. This is what the customer flow produces once it has walked the
+   * Haircuts, Beards and Add-ons cards: the segments share a visit group so the
+   * barber's day and the client's booking read as one sitting.
+   *
+   * The whole run is booked in one serializable transaction — a half-booked
+   * visit (haircut in, beard trim rejected) would be worse than no booking.
+   */
+  async createVisit(
+    dto: CreateVisitDto,
+    actorId: string,
+    actorRole: Role = Role.CUSTOMER,
+  ): Promise<VisitBookingResult> {
+    try {
+      const isStaff = actorRole !== Role.CUSTOMER;
+      const customerId = isStaff && dto.customerId ? dto.customerId : actorId;
+      const source =
+        actorRole === Role.BARBER || actorRole === Role.WASH_ATTENDANT
+          ? BookingSource.WALK_IN
+          : isStaff
+            ? BookingSource.RECEPTION
+            : BookingSource.ONLINE;
+
+      const startsAt = new Date(dto.startsAt);
+      if (Number.isNaN(startsAt.getTime()) || startsAt <= new Date()) {
+        throw new BadRequestException('startsAt must be a future ISO-8601 timestamp');
+      }
+
+      // Look the services up as a set, then re-index so the caller's order (and
+      // any repeat of the same service) is preserved.
+      const found = await this.prisma.service.findMany({
+        where: { id: { in: dto.serviceIds }, isActive: true, kind: ServiceKind.BARBER },
+      });
+      const byId = new Map(found.map((service) => [service.id, service]));
+      const missing = dto.serviceIds.filter((id) => !byId.has(id));
+      if (missing.length > 0) {
+        throw new BadRequestException(
+          `Service ${missing[0]} not found, inactive, or not a barber service`,
+        );
+      }
+
+      const barber = await this.prisma.user.findFirst({
+        where: {
+          id: dto.barberId,
+          role: Role.BARBER,
+          locationId: dto.locationId,
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      if (!barber) {
+        throw new BadRequestException('Barber not found at this branch');
+      }
+
+      if (dto.memberId) {
+        const member = await this.prisma.accountMember.findFirst({
+          where: { id: dto.memberId, accountId: customerId },
+          select: { id: true },
+        });
+        if (!member) {
+          throw new BadRequestException('That member is not on this account');
+        }
+      }
+
+      // Lay the segments end to end, priced for this barber.
+      let cursor = startsAt;
+      const segments: {
+        serviceId: string;
+        startsAt: Date;
+        endsAt: Date;
+        priceCents: number;
+        maxDaily: number | null;
+      }[] = [];
+      for (const serviceId of dto.serviceIds) {
+        const service = byId.get(serviceId) as Service;
+        const pricing = await this.resolveBarberPricing(service, dto.barberId);
+        const endsAt = addMinutes(cursor, pricing.durationMin);
+        segments.push({
+          serviceId: service.id,
+          startsAt: cursor,
+          endsAt,
+          priceCents: pricing.priceCents,
+          maxDaily: pricing.maxDaily,
+        });
+        cursor = endsAt;
+      }
+      const visitEnd = cursor;
+      const visitGroupId = randomUUID();
+
+      const appointmentIds = await this.bookSerializable(
+        async (tx) => {
+          const blockConflict = await tx.timeBlock.findFirst({
+            where: {
+              locationId: dto.locationId,
+              startsAt: { lt: visitEnd },
+              endsAt: { gt: startsAt },
+              OR: [{ barberId: null }, { barberId: dto.barberId }],
+            },
+            select: { id: true },
+          });
+          if (blockConflict) {
+            throw new ConflictException('This time is blocked out at the selected branch');
+          }
+
+          // One check across the full run, not per segment: the barber must be
+          // free for the whole visit.
+          const conflict = await tx.appointment.findFirst({
+            where: {
+              barberId: dto.barberId,
+              status: { in: [...ACTIVE_STATUSES] },
+              startsAt: { lt: visitEnd },
+              endsAt: { gt: startsAt },
+            },
+            select: { id: true },
+          });
+          if (conflict) {
+            throw new ConflictException('Selected barber is no longer available for this slot');
+          }
+
+          const created: string[] = [];
+          for (const segment of segments) {
+            await this.assertDailyCap(
+              tx,
+              dto.barberId,
+              segment.serviceId,
+              segment.startsAt,
+              segment.maxDaily,
+            );
+            const appointment = await tx.appointment.create({
+              data: {
+                locationId: dto.locationId,
+                customerId,
+                serviceId: segment.serviceId,
+                barberId: dto.barberId,
+                startsAt: segment.startsAt,
+                endsAt: segment.endsAt,
+                lockedUntil: segment.endsAt,
+                priceCentsSnapshot: segment.priceCents,
+                source,
+                comboGroupId: visitGroupId,
+                memberId: dto.memberId ?? null,
+                notes: dto.notes ?? null,
+              },
+              select: { id: true },
+            });
+            created.push(appointment.id);
+          }
+          return created;
+        },
+      );
+
+      return {
+        visitGroupId,
+        appointmentIds,
+        startsAt: startsAt.toISOString(),
+        endsAt: visitEnd.toISOString(),
+        totalCents: segments.reduce((sum, segment) => sum + segment.priceCents, 0),
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to create the visit');
     }
   }
 
@@ -852,7 +1127,7 @@ export class BookingsService {
       const resolved = await this.resolveBarberPricing(appointment.service, barberId);
       const endsAt = addMinutes(startsAt, resolved.durationMin);
 
-      const updated = await this.prisma.$transaction(
+      const updated = await this.bookSerializable(
         async (tx) => {
           const blockConflict = await tx.timeBlock.findFirst({
             where: {
@@ -897,7 +1172,6 @@ export class BookingsService {
             },
           });
         },
-        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
       );
 
       return {
