@@ -1,3 +1,9 @@
+> [!IMPORTANT]
+> **Jarvis and Ananke have moved.** Everything on this branch was the build-up history and now lives,
+> current and maintained, at **[SocraticSoldier/J-A-R-V-I-S](https://github.com/SocraticSoldier/J-A-R-V-I-S)**
+> — including `docs/MASTER.html`, the runbook, and the spec. Links into `docs/` on this branch will 404;
+> use the new repository.
+
 # Ta' Spiru Digital Ecosystem
 
 Unified platform for 5 Maltese branches combining premium barbering with high-end car detailing.
