@@ -3,6 +3,7 @@ import type { LocationSummary } from '@ta-spiru/shared';
 import { apiFetch } from '@/lib/api';
 import { formatEuro } from '@/lib/format';
 import { createCoupon, toggleCoupon } from './actions';
+import { requireRole } from '@/lib/require-role';
 
 interface CouponRow {
   id: string;
@@ -23,6 +24,9 @@ interface CouponRow {
 }
 
 const CouponsPage = async (): Promise<JSX.Element> => {
+  // Discounts change what customers pay.
+  await requireRole('ADMIN', 'MANAGER');
+
   let coupons: CouponRow[] = [];
   let locations: LocationSummary[] = [];
   try {

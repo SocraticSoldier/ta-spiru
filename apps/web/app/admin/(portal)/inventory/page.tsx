@@ -1,6 +1,7 @@
 import type { JSX } from 'react';
 import type { StockLevelRow } from '@ta-spiru/shared';
 import { apiFetch } from '@/lib/api';
+import { requireRole } from '@/lib/require-role';
 
 const getLevels = async (): Promise<StockLevelRow[] | null> => {
   try {
@@ -11,6 +12,9 @@ const getLevels = async (): Promise<StockLevelRow[] | null> => {
 };
 
 const InventoryPage = async (): Promise<JSX.Element> => {
+  // Stock levels and costs.
+  await requireRole('ADMIN', 'MANAGER', 'RECEPTIONIST');
+
   const levels = await getLevels();
   const byLocation = new Map<string, StockLevelRow[]>();
   for (const row of levels ?? []) {

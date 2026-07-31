@@ -8,6 +8,7 @@ import {
 import { apiFetch } from '@/lib/api';
 import { formatEuro } from '@/lib/format';
 import { moveService, recategoriseService, retireService, updateService } from './actions';
+import { requireRole } from '@/lib/require-role';
 
 const CARD_BLURB: Readonly<Record<ServiceCategoryName, string>> = {
   HAIRCUT: 'The first card a customer sees. Combos sit at the top.',
@@ -140,6 +141,9 @@ const ServiceRow = ({
 );
 
 const ServicesPage = async (): Promise<JSX.Element> => {
+  // The menu and its prices.
+  await requireRole('ADMIN', 'MANAGER');
+
   let services: ServiceSummary[] = [];
   let loadFailed = false;
   try {

@@ -1,6 +1,7 @@
 import type { JSX } from 'react';
 import type { TimeEntryRow } from '@ta-spiru/shared';
 import { apiFetch } from '@/lib/api';
+import { requireRole } from '@/lib/require-role';
 
 const getEntries = async (): Promise<TimeEntryRow[] | null> => {
   try {
@@ -14,6 +15,9 @@ const formatTime = (iso: string): string =>
   new Date(iso).toLocaleTimeString('en-MT', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Malta' });
 
 const StaffPage = async (): Promise<JSX.Element> => {
+  // Staff records and PINs.
+  await requireRole('ADMIN', 'MANAGER');
+
   const entries = await getEntries();
 
   return (

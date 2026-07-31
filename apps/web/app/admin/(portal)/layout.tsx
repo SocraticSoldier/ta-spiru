@@ -13,6 +13,9 @@ const ROLE_LABELS: Record<string, string> = {
   WASH_ATTENDANT: 'Car Wash',
 };
 
+/** Anyone who works here. A customer holding a session is not one of them. */
+const STAFF_ROLES: readonly string[] = ['ADMIN', 'MANAGER', 'RECEPTIONIST', 'BARBER', 'WASH_ATTENDANT'];
+
 const AdminLayout = async ({ children }: { children: ReactNode }): Promise<JSX.Element> => {
   let user: AuthUser | null = null;
   try {
@@ -22,6 +25,11 @@ const AdminLayout = async ({ children }: { children: ReactNode }): Promise<JSX.E
   }
   if (!user) {
     redirect('/admin/login');
+  }
+  // The real gate: /auth/me verified the token server-side, so this is the
+  // role we can trust — the middleware only reads the unverified claim.
+  if (!STAFF_ROLES.includes(user.role)) {
+    redirect('/account');
   }
 
   return (

@@ -2,6 +2,7 @@ import type { JSX } from 'react';
 import type { TransactionRow } from '@ta-spiru/shared';
 import { apiFetch } from '@/lib/api';
 import { formatEuro, LEDGER_TAG_LABELS } from '@/lib/format';
+import { requireRole } from '@/lib/require-role';
 
 const getTransactions = async (): Promise<TransactionRow[] | null> => {
   try {
@@ -30,6 +31,9 @@ const formatDateTime = (iso: string): string =>
   });
 
 const TransactionsPage = async (): Promise<JSX.Element> => {
+  // Money: owner only.
+  await requireRole('ADMIN');
+
   const transactions = await getTransactions();
 
   return (
