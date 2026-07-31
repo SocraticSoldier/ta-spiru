@@ -72,6 +72,62 @@ describe('Admin services CRUD (e2e)', () => {
     expect(list.body.some((s: { id: string }) => s.id === serviceId)).toBe(true);
   });
 
+  it('files a new barber service under add-ons until it is moved', async () => {
+    const created = await http.get('/api/v1/services').expect(200);
+    const mine = created.body.find((s: { id: string }) => s.id === serviceId);
+    // No category was given at creation, and it is a barber service.
+    expect(mine.category).toBe('ADDON');
+
+    await http
+      .patch(`/api/v1/services/${serviceId}`)
+      .set(auth(adminToken))
+      .send({ category: 'HAIRCUT' })
+      .expect(200);
+
+    const onHaircuts = await http.get('/api/v1/services').query({ category: 'HAIRCUT' }).expect(200);
+    expect(onHaircuts.body.some((s: { id: string }) => s.id === serviceId)).toBe(true);
+    const onAddons = await http.get('/api/v1/services').query({ category: 'ADDON' }).expect(200);
+    expect(onAddons.body.some((s: { id: string }) => s.id === serviceId)).toBe(false);
+  });
+
+  it('keeps the admin ordering the customer screen reads', async () => {
+    const card = await http.get('/api/v1/services').query({ category: 'HAIRCUT' }).expect(200);
+    const combos = card.body.filter((s: { isComboEligible: boolean }) => s.isComboEligible);
+    expect(combos.length).toBeGreaterThan(1);
+
+    // Swap the top two, then read the card back in customer order.
+    const ids = combos.map((s: { id: string }) => s.id);
+    const swapped = [ids[1], ids[0], ...ids.slice(2)];
+    await http
+      .put('/api/v1/services/order')
+      .set(auth(adminToken))
+      .send({ serviceIds: swapped })
+      .expect(200);
+
+    const after = await http.get('/api/v1/services').query({ category: 'HAIRCUT' }).expect(200);
+    const afterCombos = after.body
+      .filter((s: { isComboEligible: boolean }) => s.isComboEligible)
+      .map((s: { id: string }) => s.id);
+    expect(afterCombos.slice(0, 2)).toEqual([ids[1], ids[0]]);
+
+    // Put the card back the way it was.
+    await http.put('/api/v1/services/order').set(auth(adminToken)).send({ serviceIds: ids }).expect(200);
+  });
+
+  it('refuses a category only an admin may set', async () => {
+    await http
+      .patch(`/api/v1/services/${serviceId}`)
+      .set(auth(customerToken))
+      .send({ category: 'BEARD' })
+      .expect(403);
+
+    await http
+      .patch(`/api/v1/services/${serviceId}`)
+      .set(auth(adminToken))
+      .send({ category: 'NOT_A_CARD' })
+      .expect(400);
+  });
+
   it('sets seniority tiers', async () => {
     const res = await http
       .put(`/api/v1/services/${serviceId}/tiers`)
