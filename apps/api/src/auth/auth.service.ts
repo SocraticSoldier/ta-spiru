@@ -2,6 +2,8 @@ import {
   BadRequestException,
   ConflictException,
   HttpException,
+  HttpStatus,
+  HttpException as NestHttpException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
@@ -9,8 +11,9 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { compare, hash } from 'bcryptjs';
-import { Prisma, Role, User } from '@ta-spiru/database';
+import { LoginKind, Prisma, Role, User } from '@ta-spiru/database';
 import { PrismaService } from '../prisma/prisma.service';
+import { LoginGuardService, type AttemptContext } from './login-guard.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { StationLoginDto } from './dto/station-login.dto';
@@ -24,20 +27,35 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly loginGuard: LoginGuardService,
   ) {}
 
-  async login(dto: LoginDto): Promise<LoginResponse> {
+  /** 429 with how long to wait — the same answer whether the account exists. */
+  private lockedOut(retryAfterSec: number): NestHttpException {
+    const minutes = Math.max(1, Math.ceil(retryAfterSec / 60));
+    return new NestHttpException(
+      `Too many failed attempts. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`,
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
+  }
+
+  async login(dto: LoginDto, context: AttemptContext = {}): Promise<LoginResponse> {
     try {
+      const lock = await this.loginGuard.check(LoginKind.PASSWORD, dto.email);
+      if (lock.locked) {
+        throw this.lockedOut(lock.retryAfterSec);
+      }
+
       const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
-      if (!user?.passwordHash || !user.isActive) {
+      const passwordValid =
+        user?.passwordHash && user.isActive ? await compare(dto.password, user.passwordHash) : false;
+
+      if (!passwordValid || !user) {
+        await this.loginGuard.record(LoginKind.PASSWORD, dto.email, false, context);
         throw new UnauthorizedException('Invalid credentials');
       }
 
-      const passwordValid = await compare(dto.password, user.passwordHash);
-      if (!passwordValid) {
-        throw new UnauthorizedException('Invalid credentials');
-      }
-
+      await this.loginGuard.record(LoginKind.PASSWORD, dto.email, true, context, user.id);
       return this.issueSession(user);
     } catch (error) {
       if (error instanceof HttpException) {
@@ -77,8 +95,15 @@ export class AuthService {
    * branch and the barber's PIN, and gets a short-lived session for that barber.
    * The screen signs itself out again once payment is taken, ready for the next.
    */
-  async stationLogin(dto: StationLoginDto): Promise<LoginResponse> {
+  async stationLogin(dto: StationLoginDto, context: AttemptContext = {}): Promise<LoginResponse> {
     try {
+      // Counted per branch: the PIN identifies the barber, so the screen itself
+      // is the thing being guessed at.
+      const lock = await this.loginGuard.check(LoginKind.STATION_PIN, dto.locationId);
+      if (lock.locked) {
+        throw this.lockedOut(lock.retryAfterSec);
+      }
+
       const location = await this.prisma.location.findUnique({
         where: { id: dto.locationId },
         select: { id: true, isBarberOperated: true, isActive: true },
@@ -100,9 +125,17 @@ export class AuthService {
       // PINs are per-branch, so the match identifies the barber at that screen.
       for (const candidate of candidates) {
         if (candidate.pinHash && (await compare(dto.pin, candidate.pinHash))) {
+          await this.loginGuard.record(
+            LoginKind.STATION_PIN,
+            dto.locationId,
+            true,
+            context,
+            candidate.id,
+          );
           return this.issueSession(candidate, STATION_SESSION_TTL);
         }
       }
+      await this.loginGuard.record(LoginKind.STATION_PIN, dto.locationId, false, context);
       throw new UnauthorizedException('PIN not recognised at this branch');
     } catch (error) {
       if (error instanceof HttpException) {

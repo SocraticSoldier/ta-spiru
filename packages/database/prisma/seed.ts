@@ -225,7 +225,11 @@ const CORE_STAFF: readonly OrgSeed[] = [
 
 const STAFF: readonly OrgSeed[] = [...CORE_STAFF, ...BARBER_STAFF];
 
-const SHIFT_DAYS_AHEAD = 14;
+// Roster far enough ahead that the data stays usable as it ages. At 14 days the
+// e2e suite — which books as far out as +24 — started failing a few days after
+// seeding, with availability quietly returning nothing because no one was
+// rostered rather than because of anything in the code.
+const SHIFT_DAYS_AHEAD = 35;
 const MALTA_TZ = 'Europe/Malta';
 
 const getTimeZoneOffsetMs = (date: Date, timeZone: string): number => {

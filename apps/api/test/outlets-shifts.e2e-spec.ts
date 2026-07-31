@@ -105,8 +105,13 @@ describe('Barber-operated outlets, virtual queue & split shifts (e2e)', () => {
       .expect(201);
     expect(res.body.windows).toHaveLength(2);
 
+    // Scoped to the day itself: the barber is rostered on plenty of other days,
+    // and how far the roster runs is not what this test is about.
     const shifts = await prisma.shift.findMany({
-      where: { userId: samId, startsAt: { gte: new Date(`${date}T00:00:00.000Z`) } },
+      where: {
+        userId: samId,
+        startsAt: { gte: new Date(`${date}T00:00:00.000Z`), lt: new Date(`${date}T23:59:59.999Z`) },
+      },
       orderBy: { startsAt: 'asc' },
     });
     expect(shifts).toHaveLength(2);

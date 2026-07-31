@@ -251,6 +251,7 @@ model User {
   waitingListEntries   WaitingListEntry[]  @relation("WaitingListCustomer")
   waitingListRequests  WaitingListEntry[]  @relation("WaitingListBarber")
   serviceChanges       ServiceChangeLog[]  @relation("ServiceChangeActor")
+  loginAttempts        LoginAttempt[]      @relation("LoginAttemptUser")
   vehicles             Vehicle[]           @relation("CustomerVehicles")
   accountMembers       AccountMember[]     @relation("AccountMembers")
   leaveRequests        LeaveRequest[]      @relation("StaffLeave")
@@ -695,6 +696,34 @@ model Appointment {
   @@index([barberId, startsAt])
   @@index([resourceId, startsAt])
   @@index([comboGroupId])
+}
+
+enum LoginKind {
+  PASSWORD // email + password, staff and customers alike
+  STATION_PIN // the shared screen at a barber-operated outlet
+}
+
+// Every sign-in attempt, good or bad. Two jobs: it is the audit trail for who
+// got into the money screens and when, and it is what the lockout counts —
+// a 4-digit station PIN is guessable in an afternoon without one.
+model LoginAttempt {
+  id String @id @default(cuid())
+
+  kind LoginKind
+  // Email for a password login, branch id for a station PIN. Lower-cased, and
+  // recorded even when no such account exists so probing is still counted.
+  identifier String
+  ip         String?
+  userAgent  String?
+  succeeded  Boolean
+  // Set only on success — a failure must not reveal whether the account exists.
+  userId String?
+  user   User?   @relation("LoginAttemptUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([kind, identifier, createdAt])
+  @@index([createdAt])
 }
 
 // A barber changed the services of a live appointment (added a beard mid-cut,

@@ -1,4 +1,5 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Ip, Post, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
 import { AuthService } from './auth.service';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { LoginDto } from './dto/login.dto';
@@ -13,15 +14,19 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  login(@Body() dto: LoginDto): Promise<LoginResponse> {
-    return this.authService.login(dto);
+  login(@Body() dto: LoginDto, @Ip() ip: string, @Req() req: Request): Promise<LoginResponse> {
+    return this.authService.login(dto, { ip, userAgent: req.headers['user-agent'] });
   }
 
   /** Barber-operated outlets: the shared screen unlocks with a station PIN. */
   @Post('station-login')
   @HttpCode(HttpStatus.OK)
-  stationLogin(@Body() dto: StationLoginDto): Promise<LoginResponse> {
-    return this.authService.stationLogin(dto);
+  stationLogin(
+    @Body() dto: StationLoginDto,
+    @Ip() ip: string,
+    @Req() req: Request,
+  ): Promise<LoginResponse> {
+    return this.authService.stationLogin(dto, { ip, userAgent: req.headers['user-agent'] });
   }
 
   @Post('register')
