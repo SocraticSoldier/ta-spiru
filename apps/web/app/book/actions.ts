@@ -13,16 +13,6 @@ export interface BookSingleInput {
   vehicleReg?: string;
 }
 
-export interface BookComboInput {
-  locationId: string;
-  startsAt: string;
-  barberServiceId: string;
-  washServiceId: string;
-  barberId: string;
-  washBayId: string;
-  vehicleReg?: string;
-}
-
 export interface BookVisitInput {
   locationId: string;
   /** In the order they will be performed: haircut, then beard, then add-ons. */
@@ -42,13 +32,6 @@ export type BookingActionResult =
 
 interface CreatedAppointment {
   id: string;
-}
-
-interface ComboCreated {
-  comboGroupId: string;
-  barberAppointmentId: string;
-  washAppointmentId: string;
-  startsAt: string;
 }
 
 const hasSession = async (): Promise<boolean> =>
@@ -190,37 +173,3 @@ export const bookVisit = async (input: BookVisitInput): Promise<BookingActionRes
   }
 };
 
-export const bookCombo = async (input: BookComboInput): Promise<BookingActionResult> => {
-  if (!(await hasSession())) {
-    return { status: 'auth-required' };
-  }
-  try {
-    const combo = await apiFetch<ComboCreated>('/bookings/combo', {
-      method: 'POST',
-      body: JSON.stringify({
-        locationId: input.locationId,
-        startsAt: input.startsAt,
-        barberServiceId: input.barberServiceId,
-        washServiceId: input.washServiceId,
-        barberId: input.barberId,
-        washBayId: input.washBayId,
-        vehicleReg: input.vehicleReg || undefined,
-      }),
-    });
-    const services = await serviceById([input.barberServiceId, input.washServiceId]);
-    const intent = await openIntent(
-      [combo.barberAppointmentId, combo.washAppointmentId],
-      [...services.values()],
-    );
-    return {
-      status: 'booked',
-      appointmentIds: [combo.barberAppointmentId, combo.washAppointmentId],
-      comboGroupId: combo.comboGroupId,
-      startsAt: combo.startsAt,
-      amountCents: intent.amountCents,
-      paymentReference: intent.paymentReference,
-    };
-  } catch (error) {
-    return asError(error);
-  }
-};
