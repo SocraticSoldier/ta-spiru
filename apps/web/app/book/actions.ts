@@ -23,6 +23,8 @@ export interface BookVisitInput {
   washServiceId?: string | null;
   washBayId?: string | null;
   vehicleReg?: string;
+  /** Booking for a family member on the account; points stay with the parent. */
+  memberId?: string | null;
 }
 
 export type BookingActionResult =
@@ -135,6 +137,7 @@ export const bookVisit = async (input: BookVisitInput): Promise<BookingActionRes
         washServiceId: input.washServiceId || undefined,
         washBayId: input.washBayId || undefined,
         vehicleReg: input.vehicleReg || undefined,
+        memberId: input.memberId || undefined,
       }),
     });
 
