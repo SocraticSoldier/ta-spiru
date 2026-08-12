@@ -25,6 +25,13 @@ import { formatTimeMalta, shiftDate, todayMalta } from '@/lib/time';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
+/** A service as the chosen barber charges it — GET /barbers/:id/services. */
+interface BarberServicePrice {
+  serviceId: string;
+  priceCents: number;
+  durationMin: number;
+}
+
 /** A family member on the account, as GET /account/members returns them. */
 interface MemberRow {
   id: string;
@@ -77,8 +84,8 @@ const fetchJson = async <T,>(path: string, withCredentials = false): Promise<T> 
   return (await response.json()) as T;
 };
 
-const priceLabel = (service: ServiceSummary): string =>
-  service.isQuoteOnly ? 'On inspection' : formatEuro(service.priceCents);
+const priceLabel = (service: ServiceSummary, cents: number): string =>
+  service.isQuoteOnly ? 'On inspection' : formatEuro(cents);
 
 export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element => {
   const [locations, setLocations] = useState<LocationSummary[]>([]);
@@ -88,6 +95,9 @@ export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element
   const [locationId, setLocationId] = useState<string | null>(null);
   const [barbers, setBarbers] = useState<BarberSummary[]>([]);
   const [barberId, setBarberId] = useState<string | null>(null);
+  // Prices follow the barber's seniority, and the barber is picked before the
+  // services — so once one is chosen, quote their prices, not the base ones.
+  const [barberPrices, setBarberPrices] = useState<Map<string, BarberServicePrice>>(new Map());
   const [haircutId, setHaircutId] = useState<string | null>(null);
   const [beardId, setBeardId] = useState<string | null>(null);
   const [addonIds, setAddonIds] = useState<string[]>([]);
@@ -133,6 +143,34 @@ export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element
       .then(setBarbers)
       .catch(() => setBarbers([]));
   }, [locationId, stream]);
+
+  useEffect(() => {
+    if (!barberId) {
+      setBarberPrices(new Map());
+      return;
+    }
+    let cancelled = false;
+    fetchJson<BarberServicePrice[]>(`/barbers/${barberId}/services`)
+      .then((rows) => {
+        if (!cancelled) setBarberPrices(new Map(rows.map((r) => [r.serviceId, r])));
+      })
+      .catch(() => {
+        if (!cancelled) setBarberPrices(new Map());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [barberId]);
+
+  /** What this service costs for the barber in hand, falling back to the menu. */
+  const priceOf = useCallback(
+    (service: ServiceSummary): number => barberPrices.get(service.id)?.priceCents ?? service.priceCents,
+    [barberPrices],
+  );
+  const minutesOf = useCallback(
+    (service: ServiceSummary): number => barberPrices.get(service.id)?.durationMin ?? service.durationMin,
+    [barberPrices],
+  );
 
   const branch = locations.find((l) => l.id === locationId) ?? null;
   const branchHasWash = (branch?.bayCount ?? 0) > 0;
@@ -181,7 +219,7 @@ export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element
       .filter((s): s is ServiceSummary => Boolean(s));
   }, [stream, haircutId, barberServiceIds, washServiceId, services]);
 
-  const totalCents = chosen.reduce((sum, s) => sum + s.priceCents, 0);
+  const totalCents = chosen.reduce((sum, s) => sum + priceOf(s), 0);
   const hasQuote = chosen.some((s) => s.isQuoteOnly);
   const dates = useMemo(
     () => Array.from({ length: 14 }, (_, i) => shiftDate(todayMalta(), i + 1)),
@@ -288,7 +326,7 @@ export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element
           {chosen.map((s) => (
             <div key={s.id} className="flex justify-between border-b border-white/5 pb-1.5">
               <span className="text-white/70">{s.name}</span>
-              <span className="text-white/45">{priceLabel(s)}</span>
+              <span className="text-white/45">{priceLabel(s, priceOf(s))}</span>
             </div>
           ))}
         </div>
@@ -385,6 +423,20 @@ export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element
                   imageUrl={l.photoUrl}
                   selected={locationId === l.id}
                   onSelect={() => {
+                    // Everything after this screen was chosen for the old
+                    // branch — its barbers, its menu, its wash bays. Switching
+                    // to Naxxar with a Fgura car wash still on the bill would
+                    // quote a price the branch cannot honour.
+                    if (l.id !== locationId) {
+                      setBarberId(null);
+                      setHaircutId(null);
+                      setBeardId(null);
+                      setAddonIds([]);
+                      setWashServiceId(null);
+                      setWashBayId(null);
+                      setSlot(null);
+                      setSlots(null);
+                    }
                     setLocationId(l.id);
                     next();
                   }}
@@ -403,6 +455,7 @@ export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element
               meta="Whoever is free at the time you want"
               selected={barberId === null}
               onSelect={() => {
+                if (barberId !== null) setSlot(null);
                 setBarberId(null);
                 next();
               }}
@@ -416,6 +469,7 @@ export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element
                   .join(' · ')}
                 selected={barberId === b.id}
                 onSelect={() => {
+                  if (b.id !== barberId) setSlot(null);
                   setBarberId(b.id);
                   next();
                 }}
@@ -439,8 +493,8 @@ export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element
               <OptionRow
                 key={s.id}
                 title={s.name}
-                meta={`${s.durationMin} min${s.isComboEligible ? ' · Combo' : ''}`}
-                trailing={priceLabel(s)}
+                meta={`${minutesOf(s)} min${s.isComboEligible ? ' · Combo' : ''}`}
+                trailing={priceLabel(s, priceOf(s))}
                 selected={haircutId === s.id}
                 onSelect={() => {
                   setHaircutId(s.id);
@@ -467,8 +521,8 @@ export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element
               <OptionRow
                 key={s.id}
                 title={s.name}
-                meta={`${s.durationMin} min`}
-                trailing={priceLabel(s)}
+                meta={`${minutesOf(s)} min`}
+                trailing={priceLabel(s, priceOf(s))}
                 selected={beardId === s.id}
                 onSelect={() => {
                   setBeardId(s.id);
@@ -500,8 +554,8 @@ export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element
               <OptionRow
                 key={s.id}
                 title={s.name}
-                meta={`${s.durationMin} min`}
-                trailing={priceLabel(s)}
+                meta={`${minutesOf(s)} min`}
+                trailing={priceLabel(s, priceOf(s))}
                 selected={addonIds.includes(s.id)}
                 onSelect={() =>
                   setAddonIds((prev) =>
@@ -529,8 +583,8 @@ export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element
               <OptionRow
                 key={s.id}
                 title={s.name}
-                meta={`${s.durationMin} min`}
-                trailing={priceLabel(s)}
+                meta={`${minutesOf(s)} min`}
+                trailing={priceLabel(s, priceOf(s))}
                 selected={washServiceId === s.id}
                 onSelect={() => {
                   setWashServiceId(s.id);
@@ -643,8 +697,8 @@ export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element
           footer={
             phase === 'auth' ? undefined : (
               <ContinueButton
-                label={phase === 'booking' ? 'Booking…' : 'Confirm booking'}
-                disabled={phase === 'booking'}
+                label={phase === 'booking' ? 'Booking…' : !slot ? 'Pick a time first' : 'Confirm booking'}
+                disabled={phase === 'booking' || !slot}
                 onClick={() => void submit()}
               />
             )
@@ -654,7 +708,7 @@ export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element
             {chosen.map((s) => (
               <div key={s.id} className="flex justify-between border-b border-white/5 pb-1.5">
                 <span className="text-white/70">{s.name}</span>
-                <span className="text-white/45">{priceLabel(s)}</span>
+                <span className="text-white/45">{priceLabel(s, priceOf(s))}</span>
               </div>
             ))}
           </div>
