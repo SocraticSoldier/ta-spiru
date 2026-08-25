@@ -36,15 +36,18 @@ export class CreateVisitDto {
 
   /**
    * Optional car wash taken alongside the visit (Fgura only). The car is washed
-   * on a bay while the customer is in the chair, so this runs in parallel with
-   * the barber segments rather than after them.
+   * on a bay while the customer is in the chair, so these run in parallel with
+   * the barber segments rather than after them. Several may be stacked — an
+   * exterior wash plus a wax, say — and the bay is held for all of them.
    */
   @IsOptional()
-  @IsString()
-  @IsNotEmpty()
-  washServiceId?: string;
+  @IsArray()
+  @ArrayMaxSize(6)
+  @IsString({ each: true })
+  @IsNotEmpty({ each: true })
+  washServiceIds?: string[];
 
-  /** Required when washServiceId is given. */
+  /** Required when washServiceIds is given. */
   @IsOptional()
   @IsString()
   @IsNotEmpty()

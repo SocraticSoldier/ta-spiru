@@ -9,9 +9,16 @@ import type {
   BarberSummary,
   LocationSummary,
   ServiceSummary,
+  VehicleSizeName,
+} from '@ta-spiru/shared';
+import {
+  VEHICLE_SIZE_LABELS,
+  vehicleMakes,
+  vehicleModels,
+  vehicleSizeFor,
 } from '@ta-spiru/shared';
 
-import { bookSingle, bookVisit, type BookingActionResult } from '@/app/book/actions';
+import { bookSingle, bookVisit, saveVehicle, type BookingActionResult } from '@/app/book/actions';
 import { AuthForm } from '@/components/auth-form';
 import {
   ContinueButton,
@@ -30,6 +37,15 @@ interface BarberServicePrice {
   serviceId: string;
   priceCents: number;
   durationMin: number;
+}
+
+/** A car already on the account — GET /account/vehicles. */
+interface VehicleRow {
+  id: string;
+  reg: string;
+  make: string;
+  model: string;
+  size: VehicleSizeName;
 }
 
 /** A family member on the account, as GET /account/members returns them. */
@@ -55,6 +71,7 @@ type StepKey =
   | 'beard'
   | 'extras'
   | 'wash'
+  | 'vehicle'
   | 'when'
   | 'who'
   | 'confirm';
@@ -101,7 +118,12 @@ export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element
   const [haircutId, setHaircutId] = useState<string | null>(null);
   const [beardId, setBeardId] = useState<string | null>(null);
   const [addonIds, setAddonIds] = useState<string[]>([]);
-  const [washServiceId, setWashServiceId] = useState<string | null>(null);
+  const [washServiceIds, setWashServiceIds] = useState<string[]>([]);
+  // Make and model decide the wash size band, so the customer never has to
+  // judge whether their own car counts as "medium".
+  const [vehicleMake, setVehicleMake] = useState<string | null>(null);
+  const [vehicleModel, setVehicleModel] = useState<string | null>(null);
+  const [saveVehicle_, setSaveVehicle] = useState(true);
   const [washBayId, setWashBayId] = useState<string | null>(null);
 
   const [date, setDate] = useState<string>(shiftDate(todayMalta(), 1));
@@ -110,6 +132,7 @@ export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element
   const [slot, setSlot] = useState<AvailabilitySlot | null>(null);
 
   const [members, setMembers] = useState<MemberRow[]>([]);
+  const [savedVehicles, setSavedVehicles] = useState<VehicleRow[]>([]);
   const [memberId, setMemberId] = useState<string | null>(null);
   const [vehicleReg, setVehicleReg] = useState('');
 
@@ -135,6 +158,9 @@ export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element
     fetchJson<MemberRow[]>('/account/members', true)
       .then(setMembers)
       .catch(() => setMembers([]));
+    fetchJson<VehicleRow[]>('/account/vehicles', true)
+      .then(setSavedVehicles)
+      .catch(() => setSavedVehicles([]));
   }, []);
 
   useEffect(() => {
@@ -176,11 +202,15 @@ export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element
   const branchHasWash = (branch?.bayCount ?? 0) > 0;
 
   const steps = useMemo((): StepKey[] => {
-    if (stream === 'WASH') return ['branch', 'haircut', 'when', 'who', 'confirm'];
+    if (stream === 'WASH') return ['branch', 'haircut', 'vehicle', 'when', 'who', 'confirm'];
     const base: StepKey[] = ['branch', 'barber', 'haircut', 'beard', 'extras'];
-    if (branchHasWash) base.push('wash');
+    // The car comes first: wash prices are banded by size, and the menu lists a
+    // separate row per band. Without knowing the car we would be offering the
+    // same wash three times and letting someone pick the wrong one.
+    if (branchHasWash) base.push('vehicle');
+    if (branchHasWash && vehicleModel) base.push('wash');
     return [...base, 'when', 'who', 'confirm'];
-  }, [stream, branchHasWash]);
+  }, [stream, branchHasWash, vehicleModel]);
 
   const current = steps[Math.min(cursor, steps.length - 1)] ?? 'branch';
   const next = (): void => setCursor((c) => Math.min(c + 1, steps.length - 1));
@@ -191,7 +221,25 @@ export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element
   const haircuts = stream === 'WASH' ? inCategory('WASH') : inCategory('HAIRCUT');
   const beards = inCategory('BEARD');
   const addons = inCategory('ADDON');
-  const washes = inCategory('WASH');
+  const derivedSize: VehicleSizeName =
+    vehicleMake && vehicleModel ? vehicleSizeFor(vehicleMake, vehicleModel) : 'MEDIUM';
+
+  const allWashes = inCategory('WASH');
+  /**
+   * The menu carries one row per size band — "Exterior Wash (Small/Medium/
+   * Large)". Show only the band this car falls in, plus the flat-priced
+   * detailing that has no bands at all.
+   */
+  const SIZE_SUFFIX: Readonly<Record<VehicleSizeName, RegExp>> = {
+    SMALL: /\(Small\)$/,
+    MEDIUM: /\(Medium\)$/,
+    LARGE: /\(Large \/ SUV\)$/,
+  };
+  const isSizedWash = (name: string): boolean =>
+    /\((Small|Medium|Large \/ SUV)\)$/.test(name);
+  const washes = allWashes.filter(
+    (w) => !isSizedWash(w.name) || SIZE_SUFFIX[derivedSize].test(w.name),
+  );
 
   const branches = (
     stream === 'WASH' ? locations.filter((l) => l.bayCount > 0) : locations
@@ -212,12 +260,12 @@ export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element
   );
 
   const chosen = useMemo((): ServiceSummary[] => {
-    const ids = stream === 'WASH' ? [haircutId] : [...barberServiceIds, washServiceId];
+    const ids = stream === 'WASH' ? [haircutId] : [...barberServiceIds, ...washServiceIds];
     return ids
       .filter((id): id is string => Boolean(id))
       .map((id) => services.find((s) => s.id === id))
       .filter((s): s is ServiceSummary => Boolean(s));
-  }, [stream, haircutId, barberServiceIds, washServiceId, services]);
+  }, [stream, haircutId, barberServiceIds, washServiceIds, services]);
 
   const totalCents = chosen.reduce((sum, s) => sum + priceOf(s), 0);
   const hasQuote = chosen.some((s) => s.isQuoteOnly);
@@ -247,19 +295,20 @@ export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element
 
   // A wash alongside a cut needs a free bay at the same moment.
   useEffect(() => {
-    if (!washServiceId || !locationId || !slot) {
+    const firstWash = washServiceIds[0];
+    if (!firstWash || !locationId || !slot) {
       setWashBayId(null);
       return;
     }
     fetchJson<AvailabilitySlot[]>(
-      `/bookings/availability?locationId=${locationId}&date=${date}&serviceId=${washServiceId}`,
+      `/bookings/availability?locationId=${locationId}&date=${date}&serviceId=${firstWash}`,
     )
       .then((ws) => {
         const same = ws.find((w) => w.startsAt === slot.startsAt);
         setWashBayId(same?.resourceId ?? ws[0]?.resourceId ?? null);
       })
       .catch(() => setWashBayId(null));
-  }, [washServiceId, locationId, date, slot]);
+  }, [washServiceIds, locationId, date, slot]);
 
   const submit = useCallback(async (): Promise<void> => {
     if (!locationId || !slot) return;
@@ -280,9 +329,9 @@ export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element
             serviceIds: barberServiceIds,
             startsAt: slot.startsAt,
             barberId: slot.barberId ?? barberId ?? '',
-            washServiceId,
+            washServiceIds,
             washBayId,
-            vehicleReg: washServiceId ? vehicleReg : undefined,
+            vehicleReg: washServiceIds.length ? vehicleReg : undefined,
             memberId,
           });
     if (outcome.status === 'auth-required') return setPhase('auth');
@@ -290,6 +339,10 @@ export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element
       setPhase('form');
       setError(outcome.message);
       return;
+    }
+    // The car is only worth keeping once the booking actually landed.
+    if (saveVehicle_ && vehicleMake && vehicleModel && vehicleReg.trim()) {
+      void saveVehicle({ reg: vehicleReg.trim(), make: vehicleMake, model: vehicleModel });
     }
     setResult(outcome);
     setPhase('done');
@@ -300,10 +353,13 @@ export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element
     haircutId,
     barberServiceIds,
     barberId,
-    washServiceId,
+    washServiceIds,
     washBayId,
     vehicleReg,
     memberId,
+    saveVehicle_,
+    vehicleMake,
+    vehicleModel,
   ]);
 
   if (loadFailed) {
@@ -432,7 +488,9 @@ export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element
                       setHaircutId(null);
                       setBeardId(null);
                       setAddonIds([]);
-                      setWashServiceId(null);
+                      setWashServiceIds([]);
+                      setVehicleMake(null);
+                      setVehicleModel(null);
                       setWashBayId(null);
                       setSlot(null);
                       setSlots(null);
@@ -576,7 +634,13 @@ export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element
           title="Add a car wash?"
           subtitle={`${branch?.name} only — washed while you're in the chair`}
           onBack={back}
-          footer={<SkipButton label="No car wash" onClick={() => { setWashServiceId(null); next(); }} />}
+          footer={
+            washServiceIds.length > 0 ? (
+              <ContinueButton label={`Continue with ${washServiceIds.length}`} onClick={next} />
+            ) : (
+              <SkipButton label="No car wash" onClick={() => { setWashServiceIds([]); next(); }} />
+            )
+          }
         >
           <div className="flex flex-col gap-2">
             {washes.map((s) => (
@@ -585,14 +649,129 @@ export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element
                 title={s.name}
                 meta={`${minutesOf(s)} min`}
                 trailing={priceLabel(s, priceOf(s))}
-                selected={washServiceId === s.id}
+                selected={washServiceIds.includes(s.id)}
                 onSelect={() => {
-                  setWashServiceId(s.id);
-                  next();
+                  // Several can be stacked — a wash plus a wax, say — and they
+                  // run one after another on the bay.
+                  setWashServiceIds((prev) =>
+                    prev.includes(s.id) ? prev.filter((x) => x !== s.id) : [...prev, s.id],
+                  );
+                  setSlot(null);
                 }}
               />
             ))}
           </div>
+        </StepScreen>
+      ) : null}
+
+      {current === 'vehicle' ? (
+        <StepScreen
+          key="vehicle"
+          step={stepNo}
+          total={total}
+          title={stream === 'WASH' ? 'Which car?' : 'Add a car wash?'}
+          subtitle="Pick the car and we'll price the wash for its size"
+          onBack={back}
+          footer={
+            <>
+              <ContinueButton
+                label={vehicleModel ? `Continue · ${VEHICLE_SIZE_LABELS[derivedSize]}` : 'Pick a model'}
+                disabled={!vehicleModel}
+                onClick={next}
+              />
+              {vehicleModel ? (
+                <label className="mt-3 flex items-center justify-center gap-2 text-xs text-white/50">
+                  <input
+                    type="checkbox"
+                    checked={saveVehicle_}
+                    onChange={(e) => setSaveVehicle(e.target.checked)}
+                  />
+                  Save this car to my account
+                </label>
+              ) : (
+                <SkipButton
+                  label="No car wash, thanks"
+                  onClick={() => {
+                    setVehicleMake(null);
+                    setVehicleModel(null);
+                    setWashServiceIds([]);
+                    next();
+                  }}
+                />
+              )}
+            </>
+          }
+        >
+          {savedVehicles.length > 0 && !vehicleMake ? (
+            <div className="mb-5">
+              <p className="mb-2 text-xs uppercase tracking-[0.18em] text-white/35">Your cars</p>
+              <div className="flex flex-col gap-2">
+                {savedVehicles.map((v) => (
+                  <OptionRow
+                    key={v.id}
+                    title={`${v.make} ${v.model}`}
+                    meta={`${v.reg} · ${VEHICLE_SIZE_LABELS[v.size]}`}
+                    selected={false}
+                    onSelect={() => {
+                      setVehicleMake(v.make);
+                      setVehicleModel(v.model);
+                      setVehicleReg(v.reg);
+                      setSaveVehicle(false);
+                      next();
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <p className="mb-2 text-xs uppercase tracking-[0.18em] text-white/35">
+            {vehicleMake ? 'Model' : 'Make'}
+          </p>
+          <div className="flex max-h-[46vh] flex-col gap-2 overflow-y-auto">
+            {!vehicleMake
+              ? vehicleMakes().map((make) => (
+                  <OptionRow
+                    key={make}
+                    title={make}
+                    selected={false}
+                    onSelect={() => {
+                      setVehicleMake(make);
+                      setVehicleModel(null);
+                    }}
+                  />
+                ))
+              : vehicleModels(vehicleMake).map((m) => (
+                  <OptionRow
+                    key={m.model}
+                    title={m.model}
+                    meta={VEHICLE_SIZE_LABELS[m.size]}
+                    selected={vehicleModel === m.model}
+                    onSelect={() => setVehicleModel(m.model)}
+                  />
+                ))}
+          </div>
+          {vehicleMake ? (
+            <button
+              type="button"
+              onClick={() => {
+                setVehicleMake(null);
+                setVehicleModel(null);
+              }}
+              className="mt-3 text-xs text-white/40 underline transition hover:text-white"
+            >
+              ← Different make
+            </button>
+          ) : null}
+
+          <input
+            aria-label="Vehicle registration"
+            placeholder="Registration (e.g. ABC 123)"
+            value={vehicleReg}
+            onChange={(e) => setVehicleReg(e.target.value.toUpperCase())}
+            maxLength={12}
+            className="mt-4 w-full rounded-xl border border-white/10 bg-graphite-deep px-4 py-3 text-white outline-none focus:border-bronze"
+          />
         </StepScreen>
       ) : null}
 
@@ -724,7 +903,7 @@ export const BookingFlow = ({ stream }: { stream: 'CUT' | 'WASH' }): JSX.Element
           <p className="font-display mt-3 text-4xl text-bronze-light">
             {hasQuote && totalCents === 0 ? 'On inspection' : formatEuro(totalCents)}
           </p>
-          {washServiceId || stream === 'WASH' ? (
+          {washServiceIds.length > 0 || stream === 'WASH' ? (
             <input
               aria-label="Vehicle registration"
               placeholder="Vehicle registration"

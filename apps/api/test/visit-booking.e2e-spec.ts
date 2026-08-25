@@ -254,17 +254,17 @@ describe('Multi-service visits (e2e)', () => {
         serviceIds: [haircutId, beardId],
         startsAt: slot.startsAt,
         barberId: slot.barberId,
-        washServiceId: wash.id,
+        washServiceIds: [wash.id],
         washBayId: bay.id,
         vehicleReg: 'ABC 123',
       })
       .expect(201);
 
-    expect(visit.body.washAppointmentId).not.toBeNull();
+    expect(visit.body.washAppointmentIds).toHaveLength(1);
     expect(visit.body.appointmentIds).toHaveLength(3); // 2 barber segments + the wash
 
     const washRow = await prisma.appointment.findUniqueOrThrow({
-      where: { id: visit.body.washAppointmentId },
+      where: { id: visit.body.washAppointmentIds[0] },
       select: { startsAt: true, resourceId: true, comboGroupId: true, vehicleReg: true },
     });
     // The car goes on the bay as the customer sits down, not once they are done.
@@ -272,6 +272,49 @@ describe('Multi-service visits (e2e)', () => {
     expect(washRow.resourceId).toBe(bay.id);
     expect(washRow.comboGroupId).toBe(visit.body.visitGroupId);
     expect(washRow.vehicleReg).toBe('ABC 123');
+  });
+
+  it('stacks two washes on the bay, one after the other', async () => {
+    const fguraId = (await prisma.location.findUniqueOrThrow({ where: { slug: 'fgura' } })).id;
+    const [wash, wax] = await Promise.all([
+      prisma.service.findUniqueOrThrow({ where: { slug: 'exterior-wash' } }),
+      prisma.service.findUniqueOrThrow({ where: { slug: 'sio2-detailer-exterior' } }),
+    ]);
+    const bay = await prisma.resource.findFirstOrThrow({
+      where: { locationId: fguraId, kind: 'WASH_BAY', isActive: true },
+    });
+    const slots = await http
+      .get('/api/v1/bookings/availability')
+      .query({ locationId: fguraId, date, serviceId: haircutId })
+      .expect(200);
+    const slot = slots.body.at(-1);
+
+    const visit = await http
+      .post('/api/v1/bookings/visit')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        locationId: fguraId,
+        serviceIds: [haircutId],
+        startsAt: slot.startsAt,
+        barberId: slot.barberId,
+        washServiceIds: [wash.id, wax.id],
+        washBayId: bay.id,
+        vehicleReg: 'TWO 222',
+      })
+      .expect(201);
+
+    expect(visit.body.washAppointmentIds).toHaveLength(2);
+    expect(visit.body.totalCents).toBeGreaterThanOrEqual(wash.priceCents + wax.priceCents);
+
+    const washRows = await prisma.appointment.findMany({
+      where: { id: { in: visit.body.washAppointmentIds } },
+      orderBy: { startsAt: 'asc' },
+      select: { startsAt: true, endsAt: true, serviceId: true, resourceId: true },
+    });
+    // Same bay, in the order asked for, with the second starting as the first ends.
+    expect(new Set(washRows.map((r) => r.resourceId)).size).toBe(1);
+    expect(washRows.map((r) => r.serviceId)).toEqual([wash.id, wax.id]);
+    expect(washRows[1]?.startsAt.getTime()).toBe(washRows[0]?.endsAt.getTime());
   });
 
   it('rejects a car wash given without a bay', async () => {
@@ -289,7 +332,7 @@ describe('Multi-service visits (e2e)', () => {
         serviceIds: [haircutId],
         startsAt: slots.body[0].startsAt,
         barberId: slots.body[0].barberId,
-        washServiceId: wash.id,
+        washServiceIds: [wash.id],
       })
       .expect(400);
   });
@@ -314,7 +357,7 @@ describe('Multi-service visits (e2e)', () => {
         serviceIds: [haircutId],
         startsAt: slots.body[0].startsAt,
         barberId: slots.body[0].barberId,
-        washServiceId: wash.id,
+        washServiceIds: [wash.id],
         washBayId: fguraBay.id,
       })
       .expect(400);

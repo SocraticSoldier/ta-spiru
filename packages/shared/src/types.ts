@@ -120,6 +120,9 @@ export interface PosCheckoutResponse {
 
 export type ServiceKindName = 'BARBER' | 'WASH';
 
+/** Wash prices are banded by how big the car is. */
+export type VehicleSizeName = 'SMALL' | 'MEDIUM' | 'LARGE';
+
 /**
  * Which card a service appears on in the booking flow. The barber journey walks
  * HAIRCUT -> BEARD -> ADDON; WASH is offered as a final optional card at

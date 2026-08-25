@@ -16,7 +16,12 @@ import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Matches, MaxLength, Ma
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AuthenticatedUser } from '../auth/interfaces/auth.interfaces';
+import { vehicleSizeFor } from '@ta-spiru/shared';
 import { PrismaService } from '../prisma/prisma.service';
+
+/** Explicit size wins; otherwise the catalogue decides from make and model. */
+const sizeFor = (dto: { make: string; model: string; size?: VehicleSize }): VehicleSize =>
+  dto.size ?? (vehicleSizeFor(dto.make, dto.model) as VehicleSize);
 
 class AddVehicleDto {
   @IsString()
@@ -35,8 +40,15 @@ class AddVehicleDto {
   @MaxLength(40)
   model!: string;
 
+  /**
+   * Optional. Left out, the size is worked out from the make and model, which
+   * is what the booking screen does — asking a customer to judge "medium"
+   * invites a wrong answer and an argument at the bay. Sent explicitly, it
+   * wins, so staff can correct an odd car.
+   */
+  @IsOptional()
   @IsEnum(VehicleSize)
-  size!: VehicleSize;
+  size?: VehicleSize;
 }
 
 class AddMemberDto {
@@ -97,12 +109,12 @@ export class AccountController {
         if (existing.isActive) throw new BadRequestException(`${reg} is already on your account`);
         const revived = await this.prisma.vehicle.update({
           where: { id: existing.id },
-          data: { isActive: true, make: dto.make, model: dto.model, size: dto.size },
+          data: { isActive: true, make: dto.make, model: dto.model, size: sizeFor(dto) },
         });
         return { id: revived.id, reg: revived.reg, make: revived.make, model: revived.model, size: revived.size };
       }
       const v = await this.prisma.vehicle.create({
-        data: { ownerId: user.id, reg, make: dto.make, model: dto.model, size: dto.size },
+        data: { ownerId: user.id, reg, make: dto.make, model: dto.model, size: sizeFor(dto) },
       });
       return { id: v.id, reg: v.reg, make: v.make, model: v.model, size: v.size };
     } catch (error) {

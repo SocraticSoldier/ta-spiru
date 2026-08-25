@@ -20,7 +20,7 @@ export interface BookVisitInput {
   startsAt: string;
   barberId: string;
   /** Fgura only — washed on a bay while the customer is in the chair. */
-  washServiceId?: string | null;
+  washServiceIds?: string[];
   washBayId?: string | null;
   vehicleReg?: string;
   /** Booking for a family member on the account; points stay with the parent. */
@@ -115,7 +115,7 @@ interface VisitCreated {
   startsAt: string;
   endsAt: string;
   totalCents: number;
-  washAppointmentId: string | null;
+  washAppointmentIds: string[];
 }
 
 /**
@@ -134,7 +134,7 @@ export const bookVisit = async (input: BookVisitInput): Promise<BookingActionRes
         serviceIds: input.serviceIds,
         startsAt: input.startsAt,
         barberId: input.barberId,
-        washServiceId: input.washServiceId || undefined,
+        washServiceIds: input.washServiceIds?.length ? input.washServiceIds : undefined,
         washBayId: input.washBayId || undefined,
         vehicleReg: input.vehicleReg || undefined,
         memberId: input.memberId || undefined,
@@ -144,10 +144,9 @@ export const bookVisit = async (input: BookVisitInput): Promise<BookingActionRes
     // The visit total is the authoritative figure — it carries each segment's
     // seniority-resolved price. The wash is flat-priced, so the barber share is
     // simply what is left once the wash is taken off.
-    const washService = input.washServiceId
-      ? (await serviceById([input.washServiceId])).get(input.washServiceId)
-      : undefined;
-    const washCents = washService?.priceCents ?? 0;
+    const washIds = input.washServiceIds ?? [];
+    const washLookup = washIds.length ? await serviceById(washIds) : new Map();
+    const washCents = washIds.reduce((sum, id) => sum + (washLookup.get(id)?.priceCents ?? 0), 0);
     const splits = [{ tag: 'BARBER_SERVICES', amountCents: visit.totalCents - washCents }];
     if (washCents > 0) {
       splits.push({ tag: 'CAR_DETAILING', amountCents: washCents });
@@ -176,3 +175,28 @@ export const bookVisit = async (input: BookVisitInput): Promise<BookingActionRes
   }
 };
 
+
+export interface SaveVehicleInput {
+  reg: string;
+  make: string;
+  model: string;
+}
+
+/**
+ * Puts the car on the account so the next booking can pick it in one tap.
+ *
+ * The size is left out deliberately — the API derives it from the make and
+ * model, so the band can never drift from the catalogue the customer chose in.
+ * Best-effort: a booking must not fail because saving the car did.
+ */
+export const saveVehicle = async (input: SaveVehicleInput): Promise<void> => {
+  if (!(await hasSession())) return;
+  try {
+    await apiFetch('/account/vehicles', {
+      method: 'POST',
+      body: JSON.stringify({ reg: input.reg, make: input.make, model: input.model }),
+    });
+  } catch {
+    return;
+  }
+};

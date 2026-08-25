@@ -59,8 +59,8 @@ export interface VisitBookingResult {
   startsAt: string;
   endsAt: string;
   totalCents: number;
-  /** Set when a car wash was taken alongside the visit. */
-  washAppointmentId: string | null;
+  /** Set when car washes were taken alongside the visit; empty otherwise. */
+  washAppointmentIds: string[];
 }
 
 /** Postgres serialization failure / deadlock, surfaced by Prisma. */
@@ -856,17 +856,26 @@ export class BookingsService {
       }
 
       // Optional car wash taken alongside the visit, on a bay, in parallel.
-      if ((dto.washServiceId && !dto.washBayId) || (dto.washBayId && !dto.washServiceId)) {
-        throw new BadRequestException('A car wash needs both washServiceId and washBayId');
+      const washIds = dto.washServiceIds ?? [];
+      if ((washIds.length > 0 && !dto.washBayId) || (dto.washBayId && washIds.length === 0)) {
+        throw new BadRequestException('A car wash needs both washServiceIds and washBayId');
       }
-      const washService = dto.washServiceId
-        ? await this.prisma.service.findFirst({
-            where: { id: dto.washServiceId, isActive: true, kind: ServiceKind.WASH },
+      const washFound = washIds.length
+        ? await this.prisma.service.findMany({
+            where: { id: { in: washIds }, isActive: true, kind: ServiceKind.WASH },
           })
-        : null;
-      if (dto.washServiceId && !washService) {
-        throw new BadRequestException('Car wash service not found, inactive, or not a wash service');
+        : [];
+      const washById = new Map(washFound.map((w) => [w.id, w]));
+      const missingWash = washIds.find((id) => !washById.has(id));
+      if (missingWash) {
+        throw new BadRequestException(
+          `Car wash service ${missingWash} not found, inactive, or not a wash service`,
+        );
       }
+      // Keep the caller's order (and any repeat) so the bay run reads correctly.
+      const washServices = washIds.map((id) => washById.get(id) as Service);
+      const washMinutes = washServices.reduce((sum, w) => sum + w.durationMin, 0);
+      const washCents = washServices.reduce((sum, w) => sum + w.priceCents, 0);
       const washBay = dto.washBayId
         ? await this.prisma.resource.findFirst({
             where: {
@@ -919,11 +928,11 @@ export class BookingsService {
 
       // The bay is held for the wash itself or for the whole time the customer
       // is in the chair (plus the handover buffer), whichever runs longer.
-      const bayLockEnd = washService
+      const bayLockEnd = washServices.length
         ? addMinutes(
             startsAt,
             Math.max(
-              washService.durationMin,
+              washMinutes,
               (visitEnd.getTime() - startsAt.getTime()) / 60000 + COMBO_WASH_BUFFER_MIN,
             ),
           )
@@ -959,7 +968,7 @@ export class BookingsService {
             throw new ConflictException('Selected barber is no longer available for this slot');
           }
 
-          if (washService && washBay) {
+          if (washServices.length > 0 && washBay) {
             const bayConflict = await tx.appointment.findFirst({
               where: {
                 resourceId: washBay.id,
@@ -1004,43 +1013,47 @@ export class BookingsService {
             barberAppointmentIds.push(appointment.id);
           }
 
-          let washAppointmentId: string | null = null;
-          if (washService && washBay) {
-            const wash = await tx.appointment.create({
-              data: {
-                locationId: dto.locationId,
-                customerId,
-                serviceId: washService.id,
-                resourceId: washBay.id,
-                startsAt,
-                endsAt: addMinutes(startsAt, washService.durationMin),
-                lockedUntil: bayLockEnd,
-                priceCentsSnapshot: washService.priceCents,
-                source,
-                comboGroupId: visitGroupId,
-                memberId: dto.memberId ?? null,
-                vehicleReg: dto.vehicleReg ?? null,
-              },
-              select: { id: true },
-            });
-            washAppointmentId = wash.id;
+          // The washes run one after another on the same bay; the bay is held
+          // until the last of them (or the customer leaves the chair).
+          const washAppointmentIds: string[] = [];
+          if (washBay) {
+            let washCursor = startsAt;
+            for (const wash of washServices) {
+              const washEnd = addMinutes(washCursor, wash.durationMin);
+              const created = await tx.appointment.create({
+                data: {
+                  locationId: dto.locationId,
+                  customerId,
+                  serviceId: wash.id,
+                  resourceId: washBay.id,
+                  startsAt: washCursor,
+                  endsAt: washEnd,
+                  // Only the last one holds the bay to the end of the run.
+                  lockedUntil: bayLockEnd,
+                  priceCentsSnapshot: wash.priceCents,
+                  source,
+                  comboGroupId: visitGroupId,
+                  memberId: dto.memberId ?? null,
+                  vehicleReg: dto.vehicleReg ?? null,
+                },
+                select: { id: true },
+              });
+              washAppointmentIds.push(created.id);
+              washCursor = washEnd;
+            }
           }
 
-          return { barberAppointmentIds, washAppointmentId };
+          return { barberAppointmentIds, washAppointmentIds };
         },
       );
 
       return {
         visitGroupId,
-        appointmentIds: created.washAppointmentId
-          ? [...created.barberAppointmentIds, created.washAppointmentId]
-          : created.barberAppointmentIds,
+        appointmentIds: [...created.barberAppointmentIds, ...created.washAppointmentIds],
         startsAt: startsAt.toISOString(),
         endsAt: visitEnd.toISOString(),
-        totalCents:
-          segments.reduce((sum, segment) => sum + segment.priceCents, 0) +
-          (washService?.priceCents ?? 0),
-        washAppointmentId: created.washAppointmentId,
+        totalCents: segments.reduce((sum, segment) => sum + segment.priceCents, 0) + washCents,
+        washAppointmentIds: created.washAppointmentIds,
       };
     } catch (error) {
       if (error instanceof HttpException) {
