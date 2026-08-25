@@ -729,6 +729,57 @@ model LoginAttempt {
 // A barber changed the services of a live appointment (added a beard mid-cut,
 // swapped a service, …). Every entry notifies the admin dashboard — both the
 // anti-theft angle and the positive upsell report read from this log.
+enum PromoRail {
+  LEFT_AD // house ads and partner promos down the left of the site
+  RIGHT_SOCIAL // Instagram / TikTok reels down the right
+}
+
+enum SocialNetwork {
+  INSTAGRAM
+  TIKTOK
+}
+
+/**
+ * A tile in one of the side rails on the website.
+ *
+ * Reels are NOT embedded from Instagram or TikTok — neither lets a third-party
+ * site play their video directly, and their official embeds drag in heavy
+ * external scripts that are routinely blocked. Instead each tile holds a
+ * self-hosted poster (and optionally a short muted preview clip) and links out
+ * to the real post, which is where the engagement should land anyway.
+ */
+model PromoTile {
+  id   String    @id @default(cuid())
+  rail PromoRail
+
+  title    String?
+  /** Poster image — always shown, and the fallback if there is no clip. */
+  imageUrl String
+  /** Optional short, muted, self-hosted preview that loops on hover. */
+  videoUrl String?
+  /** Where a click goes: the ad's destination, or the Reel / TikTok post. */
+  linkUrl  String
+
+  /** Right rail only — drives the little corner badge. */
+  network SocialNetwork?
+
+  sortOrder Int     @default(0)
+  isActive  Boolean @default(true)
+
+  /** Optional run dates, so a campaign can be queued and expire by itself. */
+  startsAt DateTime?
+  endsAt   DateTime?
+
+  /** Cheap first-party counters; no third-party trackers involved. */
+  impressions Int @default(0)
+  clicks      Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([rail, isActive, sortOrder])
+}
+
 model ServiceChangeLog {
   id              String      @id @default(cuid())
   appointmentId   String

@@ -15,6 +15,7 @@ import { LoyaltyModule } from './loyalty/loyalty.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
+import { PromosModule } from './promos/promos.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { QueueModule } from './queue/queue.module';
 import { RedisModule } from './redis/redis.module';
@@ -33,6 +34,7 @@ import { WaitingListModule } from './waiting-list/waiting-list.module';
       validate: validateEnv,
       envFilePath: ['.env', '../../.env'],
     }),
+    PromosModule,
     PrismaModule,
     RedisModule,
     AuthModule,
