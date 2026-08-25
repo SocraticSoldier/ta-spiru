@@ -1,10 +1,11 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { isVimeo, vimeoWatchUrl } from '@ta-spiru/shared';
 import { apiFetch } from '@/lib/api';
 
 const RAILS = ['LEFT_AD', 'RIGHT_SOCIAL'] as const;
-const NETWORKS = ['INSTAGRAM', 'TIKTOK'] as const;
+const NETWORKS = ['INSTAGRAM', 'TIKTOK', 'VIMEO'] as const;
 
 /** Only http(s) links leave the site — no javascript: or data: URLs. */
 const safeUrl = (raw: string): string | null => {
@@ -31,7 +32,13 @@ export const createPromo = async (formData: FormData): Promise<void> => {
   const startsAt = String(formData.get('startsAt') ?? '').trim();
   const endsAt = String(formData.get('endsAt') ?? '').trim();
 
-  if (!(RAILS as readonly string[]).includes(rail) || !imageUrl || !linkUrl) return;
+  // A Vimeo tile plays its own frame, so it does not need a poster. Everything
+  // else does — a poster is all there would be to show.
+  const playsInline = Boolean(videoUrl && isVimeo(videoUrl));
+  if (!(RAILS as readonly string[]).includes(rail)) return;
+  if (!imageUrl && !playsInline) return;
+  // A Vimeo tile can stand on its own, so the link is optional there.
+  if (!linkUrl && !playsInline) return;
 
   try {
     await apiFetch('/promos', {
@@ -39,9 +46,9 @@ export const createPromo = async (formData: FormData): Promise<void> => {
       body: JSON.stringify({
         rail,
         title: title || undefined,
-        imageUrl,
+        imageUrl: imageUrl ?? undefined,
         videoUrl: videoUrl ?? undefined,
-        linkUrl,
+        linkUrl: linkUrl ?? (vimeoWatchUrl(videoUrl ?? '') as string),
         network:
           rail === 'RIGHT_SOCIAL' && (NETWORKS as readonly string[]).includes(network)
             ? network

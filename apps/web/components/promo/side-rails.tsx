@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import type { JSX } from 'react';
+import { isVimeo, vimeoEmbedUrl, vimeoWatchUrl } from '@ta-spiru/shared';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
@@ -10,15 +11,16 @@ export interface PromoTile {
   id: string;
   rail: 'LEFT_AD' | 'RIGHT_SOCIAL';
   title: string | null;
-  imageUrl: string;
+  imageUrl: string | null;
   videoUrl: string | null;
   linkUrl: string;
-  network: 'INSTAGRAM' | 'TIKTOK' | null;
+  network: 'INSTAGRAM' | 'TIKTOK' | 'VIMEO' | null;
 }
 
-const NETWORK_LABEL: Record<'INSTAGRAM' | 'TIKTOK', string> = {
+const NETWORK_LABEL: Record<'INSTAGRAM' | 'TIKTOK' | 'VIMEO', string> = {
   INSTAGRAM: 'Instagram',
   TIKTOK: 'TikTok',
+  VIMEO: 'Vimeo',
 };
 
 /**
@@ -30,6 +32,7 @@ const Tile = ({ tile }: { tile: PromoTile }): JSX.Element => {
   const video = useRef<HTMLVideoElement | null>(null);
   const anchor = useRef<HTMLAnchorElement | null>(null);
   const [counted, setCounted] = useState(false);
+  const [posterFailed, setPosterFailed] = useState(false);
 
   // Count a view the first time the tile is actually on screen, not on render.
   useEffect(() => {
@@ -74,10 +77,14 @@ const Tile = ({ tile }: { tile: PromoTile }): JSX.Element => {
     );
   };
 
+  // A Vimeo tile plays for real; anything else is a poster that links out.
+  const vimeoSrc = tile.videoUrl && isVimeo(tile.videoUrl) ? vimeoEmbedUrl(tile.videoUrl, { autoplay: true }) : null;
+  const href = vimeoSrc ? (vimeoWatchUrl(tile.videoUrl ?? '') ?? tile.linkUrl) : tile.linkUrl;
+
   return (
     <a
       ref={anchor}
-      href={tile.linkUrl}
+      href={href}
       target="_blank"
       rel="noopener noreferrer sponsored"
       onClick={onClick}
@@ -87,13 +94,38 @@ const Tile = ({ tile }: { tile: PromoTile }): JSX.Element => {
       onBlur={stop}
       className="group relative block overflow-hidden rounded-xl border border-white/10 transition hover:border-bronze/60"
     >
-      <img
-        src={tile.imageUrl}
-        alt={tile.title ?? ''}
-        loading="lazy"
-        className="aspect-[9/16] w-full object-cover"
-      />
-      {tile.videoUrl ? (
+      {tile.imageUrl && !posterFailed ? (
+        <img
+          src={tile.imageUrl}
+          alt={tile.title ?? ''}
+          loading="lazy"
+          onError={() => setPosterFailed(true)}
+          className="aspect-[9/16] w-full object-cover"
+        />
+      ) : (
+        // Holds the tile's shape while the player loads, and catches a poster
+        // path that 404s — a mistyped filename should leave a quiet dark box,
+        // not broken-image alt text sprawled across the rail.
+        <div className="aspect-[9/16] w-full bg-graphite" />
+      )}
+
+      {vimeoSrc && counted ? (
+        // Mounted only once the tile has been on screen, so a rail of reels
+        // does not pull half a dozen players on first paint. pointer-events
+        // are off so the click belongs to the link, not the iframe.
+        <iframe
+          src={vimeoSrc}
+          title={tile.title ?? 'Reel'}
+          loading="lazy"
+          allow="autoplay; picture-in-picture"
+          referrerPolicy="strict-origin-when-cross-origin"
+          // bg-graphite matters: if Vimeo is blocked or slow the frame paints
+          // its own white default, which is glaring on a dark rail.
+          className="pointer-events-none absolute inset-0 h-full w-full border-0 bg-graphite object-cover"
+        />
+      ) : null}
+
+      {!vimeoSrc && tile.videoUrl ? (
         <video
           ref={video}
           src={tile.videoUrl}

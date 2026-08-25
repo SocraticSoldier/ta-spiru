@@ -737,6 +737,7 @@ enum PromoRail {
 enum SocialNetwork {
   INSTAGRAM
   TIKTOK
+  VIMEO
 }
 
 /**
@@ -753,11 +754,17 @@ model PromoTile {
   rail PromoRail
 
   title    String?
-  /** Poster image — always shown, and the fallback if there is no clip. */
-  imageUrl String
-  /** Optional short, muted, self-hosted preview that loops on hover. */
+  /**
+   * Poster image. Optional only for a Vimeo tile, which brings its own frame —
+   * everything else needs one, since a poster is all there is to show.
+   */
+  imageUrl String?
+  /**
+   * A short muted self-hosted clip, or a Vimeo link. A Vimeo link plays inline
+   * in the rail; Instagram and TikTok cannot, so those stay poster-and-link.
+   */
   videoUrl String?
-  /** Where a click goes: the ad's destination, or the Reel / TikTok post. */
+  /** Where a click goes: the ad's destination, or the post itself. */
   linkUrl  String
 
   /** Right rail only — drives the little corner badge. */

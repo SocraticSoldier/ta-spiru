@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -15,6 +16,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { PromoRail, Role, SocialNetwork } from '@ta-spiru/database';
+import { isVimeo } from '@ta-spiru/shared';
 import {
   IsBoolean,
   IsEnum,
@@ -39,10 +41,11 @@ class UpsertPromoDto {
   @MaxLength(80)
   title?: string;
 
+  /** Optional for a Vimeo tile, which brings its own frame. */
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(600)
-  imageUrl!: string;
+  imageUrl?: string;
 
   @IsOptional()
   @IsString()
@@ -79,7 +82,7 @@ export interface PromoTileRow {
   id: string;
   rail: PromoRail;
   title: string | null;
-  imageUrl: string;
+  imageUrl: string | null;
   videoUrl: string | null;
   linkUrl: string;
   network: SocialNetwork | null;
@@ -196,7 +199,7 @@ export class PromosController {
         data: {
           ...(dto.rail !== undefined ? { rail: dto.rail } : {}),
           ...(dto.title !== undefined ? { title: dto.title || null } : {}),
-          ...(dto.imageUrl !== undefined ? { imageUrl: dto.imageUrl } : {}),
+          ...(dto.imageUrl !== undefined ? { imageUrl: dto.imageUrl || null } : {}),
           ...(dto.videoUrl !== undefined ? { videoUrl: dto.videoUrl || null } : {}),
           ...(dto.linkUrl !== undefined ? { linkUrl: dto.linkUrl } : {}),
           ...(dto.network !== undefined ? { network: dto.network ?? null } : {}),
@@ -226,10 +229,15 @@ export class PromosController {
   }
 
   private toData(dto: UpsertPromoDto) {
+    // A tile has to be able to show something: either a poster, or a Vimeo
+    // link that renders its own frame.
+    if (!dto.imageUrl && !isVimeo(dto.videoUrl)) {
+      throw new BadRequestException('A tile needs a poster image, or a Vimeo link to play');
+    }
     return {
       rail: dto.rail,
       title: dto.title ?? null,
-      imageUrl: dto.imageUrl,
+      imageUrl: dto.imageUrl ?? null,
       videoUrl: dto.videoUrl ?? null,
       linkUrl: dto.linkUrl,
       // The badge only means anything on the social rail.
@@ -245,7 +253,7 @@ export class PromosController {
     id: string;
     rail: PromoRail;
     title: string | null;
-    imageUrl: string;
+    imageUrl: string | null;
     videoUrl: string | null;
     linkUrl: string;
     network: SocialNetwork | null;

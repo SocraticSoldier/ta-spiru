@@ -7,10 +7,10 @@ interface PromoTileRow {
   id: string;
   rail: 'LEFT_AD' | 'RIGHT_SOCIAL';
   title: string | null;
-  imageUrl: string;
+  imageUrl: string | null;
   videoUrl: string | null;
   linkUrl: string;
-  network: 'INSTAGRAM' | 'TIKTOK' | null;
+  network: 'INSTAGRAM' | 'TIKTOK' | 'VIMEO' | null;
   sortOrder: number;
   isActive: boolean;
   startsAt: string | null;
@@ -43,18 +43,28 @@ const RailBlock = ({ rail, tiles }: { rail: PromoTileRow['rail']; tiles: PromoTi
               key={t.id}
               className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-graphite px-3 py-2.5 text-sm"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={t.imageUrl} alt="" className="h-14 w-9 shrink-0 rounded object-cover" />
+              {t.imageUrl ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img src={t.imageUrl} alt="" className="h-14 w-9 shrink-0 rounded object-cover" />
+              ) : (
+                <span className="grid h-14 w-9 shrink-0 place-items-center rounded bg-graphite-deep text-[9px] text-white/40">
+                  play
+                </span>
+              )}
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium">{t.title ?? '(untitled)'}</span>
                 <span className="block truncate text-xs text-white/40">{t.linkUrl}</span>
               </span>
               {t.network ? (
                 <span className="rounded bg-bronze/15 px-1.5 py-0.5 text-xs text-bronze-light">
-                  {t.network === 'INSTAGRAM' ? 'Instagram' : 'TikTok'}
+                  {t.network === 'INSTAGRAM' ? 'Instagram' : t.network === 'TIKTOK' ? 'TikTok' : 'Vimeo'}
                 </span>
               ) : null}
-              {t.videoUrl ? <span className="text-xs text-white/35">clip</span> : null}
+              {t.videoUrl ? (
+                <span className="text-xs text-white/35">
+                  {/vimeo\.com|^\d+$/i.test(t.videoUrl) ? 'plays inline' : 'clip'}
+                </span>
+              ) : null}
               <span className="text-xs text-white/40">#{t.sortOrder}</span>
               <span className="text-xs text-white/50">
                 {t.clicks} / {t.impressions}
@@ -116,9 +126,9 @@ const PromosPage = async (): Promise<JSX.Element> => {
         screen, and the site works perfectly without them.
       </p>
       <p className="mt-3 max-w-2xl rounded-xl border border-white/10 bg-graphite/60 p-3 text-xs text-white/45">
-        Instagram and TikTok do not let another site play their videos. So each reel tile holds your own
-        poster image (and optionally a short muted clip) and links out to the real post — which is where
-        you want the likes and follows landing anyway.
+        <strong className="text-white/70">Vimeo plays right here in the rail</strong> — paste a Vimeo link and
+        the video loops silently in place, no poster needed. Instagram and TikTok do not let another site
+        play their videos, so those tiles stay a poster image that links out to the real post.
       </p>
 
       {loadFailed ? (
@@ -142,9 +152,10 @@ const PromosPage = async (): Promise<JSX.Element> => {
           </label>
           <label className="flex flex-col gap-1.5 text-sm text-white/60">
             Network (reels only)
-            <select name="network" defaultValue="INSTAGRAM" className={input}>
-              <option value="INSTAGRAM">Instagram</option>
-              <option value="TIKTOK">TikTok</option>
+            <select name="network" defaultValue="VIMEO" className={input}>
+              <option value="VIMEO">Vimeo — plays inline</option>
+              <option value="INSTAGRAM">Instagram — links out</option>
+              <option value="TIKTOK">TikTok — links out</option>
             </select>
           </label>
           <label className="flex flex-col gap-1.5 text-sm text-white/60">
@@ -152,20 +163,24 @@ const PromosPage = async (): Promise<JSX.Element> => {
             <input name="title" type="text" placeholder="Optional" className={input} />
           </label>
           <label className="flex flex-col gap-1.5 text-sm text-white/60 sm:col-span-2">
-            Poster image URL
-            <input name="imageUrl" type="text" required placeholder="/promos/reel-1.jpg" className={input} />
+            Video — Vimeo link, or an .mp4
+            <input
+              name="videoUrl"
+              type="text"
+              placeholder="https://vimeo.com/123456789"
+              className={input}
+            />
           </label>
           <label className="flex flex-col gap-1.5 text-sm text-white/60">
-            Preview clip URL
-            <input name="videoUrl" type="text" placeholder="Optional .mp4" className={input} />
+            Poster image
+            <input name="imageUrl" type="text" placeholder="/promos/reel-1.jpg" className={input} />
           </label>
           <label className="flex flex-col gap-1.5 text-sm text-white/60 sm:col-span-2">
             Links to
             <input
               name="linkUrl"
               type="text"
-              required
-              placeholder="https://www.instagram.com/reel/…"
+              placeholder="https://www.instagram.com/reel/… (Vimeo fills this in itself)"
               className={input}
             />
           </label>
